@@ -17,7 +17,7 @@ public class MessageCodec(
     private readonly IDescribeTemporalApi _temporalApiDescriptor = temporalApiDescriptor ?? throw new ArgumentNullException(nameof(temporalApiDescriptor));
     private readonly ICodec<PayloadContext, byte[]> _payloadCodec = payloadCodec ?? throw new ArgumentNullException(nameof(payloadCodec));
     private readonly ILogger<MessageCodec> _logger = logger;
-    
+
     /// <summary>
     /// Transforms payload fields in a protobuf message
     /// </summary>
@@ -26,11 +26,9 @@ public class MessageCodec(
         // Quick check - if this message type has no payload fields, return unchanged
         if (!_temporalApiDescriptor.PayloadFields.MessageTypeHasPayloadFields(messageTypeName))
         {
-            _logger.LogInformation($"Skipping {messageTypeName} - no payload fields");
             return messageBytes;
         }
 
-        _logger.LogInformation($"Transforming {messageTypeName} ");
         using var output = new MemoryStream();
         var pos = 0;
         
@@ -76,7 +74,6 @@ public class MessageCodec(
             else if (wireType == WireFormat.WireType.LengthDelimited && 
                      _temporalApiDescriptor.PayloadFields.HasNestedPayloadFields(messageTypeName, fieldNumber))
             {
-                _logger.LogInformation("$Transforming nested message {MessageTypeName} field {FieldNumber} ", messageTypeName, fieldNumber);
                 // This field contains nested messages with payload fields
                 var (fieldData, fieldSize) = ReadLengthDelimitedField(messageBytes, pos);
                 pos += fieldSize;
@@ -110,8 +107,6 @@ public class MessageCodec(
     /// </summary>
     private byte[] TransformPayloadsCollection(byte[] payloadsBytes, CodecDirection direction, FieldDescriptor? fieldDescriptor, MessageContext context)
     {
-        _logger.LogInformation($"Transforming MultiplePayloads {context.MessageTypeName} ");
-
         using var output = new MemoryStream();
         var pos = 0;
         
@@ -170,7 +165,6 @@ public class MessageCodec(
         CodecDirection direction, 
         FieldDescriptor? fieldDescriptor, MessageContext context)
     {
-        _logger.LogInformation($"Transforming SinglePayload {context.MessageTypeName} ");
 
         var payloadContext = new PayloadContext
         {
