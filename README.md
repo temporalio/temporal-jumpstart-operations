@@ -64,4 +64,49 @@ echo "eyJib25rIjoiYm9vcCJ9" | base64 --decode
 # returns `{"bonk":"boop"}`
 ```
 
+#### Let's Make Omes
+
+We can use the super cool [omes](https://github.com/temporalio/omes) tool to blast a bunch of different requests through for us and we can spot check the payloads to make sure all the goodies are 
+encrypted. For fun, let's enable Nexus to make sure that even that data is getting encoded.
+
+
+0. Start the Temporal Dev Server
+```
+temporal server start-dev --dynamic-config-value system.enableNexus=true
+```
+
+1. Create an Nexus endpoint
+```
+temporal operator nexus endpoint create --name my-nexus-endpoint \
+	--target-namespace default \
+	--target-task-queue throughput_stress:default-run-id
+```
+
+2. Start the proxy 
+```
+dotnet run --project dotnet/src/Temporal.Operations.Proxy
+# this should start on http://localhost:5000
+# note that this is NOT on SSL/TLS!
+```
+
+3. Run a ton of traffic (with Nexus!) using `omes`
+```
+go run ./cmd run-scenario-with-worker \
+	--scenario throughput_stress \
+	--language go \
+	--option nexus-endpoint=my-nexus-endpoint \
+	--run-id default-run-id \
+	--address localhost:5000
+```
+
+4. Go into one of the WorkflowExecutionStartedEvents in a Workflow and note that the `SearchAttributes` are NOT encoded.
+```
+Search Attributes
+
+⌄
+{
+  "ThroughputStressScenarioId": "default-run-id"
+}
+```
+This is a sign that our proxy is correctly skipping messages that should not be encoded (though they enclose `Payload`).
 
