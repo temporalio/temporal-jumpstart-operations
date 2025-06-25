@@ -1,9 +1,9 @@
 using FluentAssertions;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Temporal.Operations.Proxy.Configuration;
+using Temporal.Operations.Proxy.Tests.Services;
 
 namespace Temporal.Operations.Proxy.Tests.Configuration;
 
@@ -11,7 +11,7 @@ namespace Temporal.Operations.Proxy.Tests.Configuration;
 /// Comprehensive tests for PayloadFieldLookup using actual Temporal API descriptors
 /// Tests validate correct identification and lookup of Payload fields across the Temporal API
 /// </summary>
-public class PayloadFieldLookupTests : IDisposable
+public class PayloadFieldLookupTests : IDisposable, IClassFixture<TemporalApiDescriptorFixture>
 {
     private readonly TemporalApiDescriptor _apiDescriptor;
     private readonly PayloadFieldLookup _payloadFieldLookup;
@@ -62,32 +62,11 @@ public class PayloadFieldLookupTests : IDisposable
         ["temporal.api.command.v1.ContinueAsNewWorkflowExecutionCommandAttributes"] = new[] { 4, 10 } // input, last_completion_result
     };
 
-    public PayloadFieldLookupTests()
+    public PayloadFieldLookupTests(TemporalApiDescriptorFixture fixture)
     {
-        _apiDescriptor = new TemporalApiDescriptor(new Logger<TemporalApiDescriptor>(new LoggerFactory()));
-        
-        // Load the temporal-api.binpb file - adjust path as needed for your test environment
-        var descriptorPath = GetTemporalApiDescriptorPath();
-        _apiDescriptor.LoadAsync(descriptorPath).Wait();
-        _payloadFieldLookup = _apiDescriptor.PayloadFields;
-    }
 
-    private static string GetTemporalApiDescriptorPath()
-    {
-        var key = "Protobuf:DescriptorFiles:TemporalApi";
-        var configuration = new ConfigurationBuilder()
-            .SetBasePath(Directory.GetCurrentDirectory())
-            .AddJsonFile("appsettings.json", optional: false)
-            .Build();
-        
-        var descriptorPath = Path.Combine(Directory.GetCurrentDirectory(), configuration[key] ?? throw new InvalidOperationException($"Configuration key '{key}' not found in appsettings.json"));
-        
-        if (!File.Exists(descriptorPath))
-        {
-            throw new FileNotFoundException($"Temporal API descriptor file not found at configured path: {descriptorPath}. Please ensure the file exists at the configured location.");
-        }
-        
-        return descriptorPath;
+        _apiDescriptor = fixture.TemporalApiDescriptor;
+        _payloadFieldLookup = _apiDescriptor.PayloadFields;
     }
 
     [Fact]

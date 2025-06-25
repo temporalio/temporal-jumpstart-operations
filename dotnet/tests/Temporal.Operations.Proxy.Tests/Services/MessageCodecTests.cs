@@ -3,9 +3,7 @@ using Google.Protobuf;
 using Google.Protobuf.Collections;
 using Google.Protobuf.WellKnownTypes;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Temporal.Operations.Proxy.Configuration;
 using Temporal.Operations.Proxy.Interfaces;
 using Temporal.Operations.Proxy.Models;
 using Temporal.Operations.Proxy.Services;
@@ -18,23 +16,27 @@ using Temporalio.Api.WorkflowService.V1;
 
 namespace Temporal.Operations.Proxy.Tests.Services;
 
-public class MessageCodecTest
+public class MessageCodecTest: IClassFixture<TemporalApiDescriptorFixture>
 {
-    private readonly IConfigurationRoot _configuration;
-    private readonly string _descriptorPath = "temporal-api.binpb";
-    private readonly TemporalApiDescriptor _apiDescriptor;
-
-    public MessageCodecTest()
+    private readonly ICodec<PayloadContext, byte[]> _encoder;
+    private readonly string _defaultNamespace;
+    private readonly AesByteEncryptor _encryptor;
+    private readonly string _keyId;
+    private readonly MessageCodec _sut;
+    public MessageCodecTest(TemporalApiDescriptorFixture fixture)
     {
-        var key = "Protobuf:DescriptorFiles:TemporalApi";
-        _configuration = new ConfigurationBuilder()
-            .SetBasePath(Directory.GetCurrentDirectory())
-            .AddJsonFile("appsettings.json", optional: false)
-            .Build();
+        var apiDescriptor = fixture.TemporalApiDescriptor;
         
-        _descriptorPath = Path.Combine(Directory.GetCurrentDirectory(), _configuration[key] ?? throw new InvalidOperationException());
-        _apiDescriptor = new TemporalApiDescriptor(new Logger<TemporalApiDescriptor>(new LoggerFactory()));
-        _apiDescriptor.LoadAsync(_descriptorPath).Wait();
+        _defaultNamespace = "default";
+        _keyId = "TestKeyId";
+        var keyResolver = new InMemoryTemporalNamespaceKeyIdResolver();
+        keyResolver.AddKeyId(_defaultNamespace, _keyId);
+        _encryptor = new AesByteEncryptor();
+        _encryptor.AddKey(_keyId, new byte[32]);
+        
+        _encoder = new CryptPayloadCodec(_encryptor, keyResolver);
+        
+        _sut = new MessageCodec(apiDescriptor, _encoder, new Logger<MessageCodec>(new LoggerFactory()));
     }
 
     [Fact]
@@ -59,24 +61,27 @@ public class MessageCodecTest
             {
                 Payloads_ = { payload }
             },
-            WorkflowExecutionTimeout = Google.Protobuf.WellKnownTypes.Duration.FromTimeSpan(TimeSpan.FromMinutes(10)),
-            WorkflowRunTimeout = Google.Protobuf.WellKnownTypes.Duration.FromTimeSpan(TimeSpan.FromMinutes(5)),
-            WorkflowTaskTimeout = Google.Protobuf.WellKnownTypes.Duration.FromTimeSpan(TimeSpan.FromSeconds(30)),
+            WorkflowExecutionTimeout = Duration.FromTimeSpan(TimeSpan.FromMinutes(10)),
+            WorkflowRunTimeout = Duration.FromTimeSpan(TimeSpan.FromMinutes(5)),
             Identity = "my-worker-identity",
             RequestId = Guid.NewGuid().ToString(),
-            WorkflowIdReusePolicy = WorkflowIdReusePolicy.AllowDuplicate
+            WorkflowIdReusePolicy = WorkflowIdReusePolicy.AllowDuplicate,
+            SearchAttributes = new SearchAttributes
+            {
+                IndexedFields =
+                {
+                    { "custom-field", new Payload
+                    {
+                        Metadata = { { "encoding", ByteString.CopyFromUtf8("json/plain") } }, 
+                        Data = ByteString.CopyFromUtf8("{\"message\": \"Hello SA\"}")
+                    } }
+                }
+            }
         };
+        request.WorkflowTaskTimeout = Duration.FromTimeSpan(TimeSpan.FromSeconds(30));
         var grpcRequest = GrpcUtils.CreateGrpcFrame(request.ToByteArray());
-        var @namespace = "default";
-        var keyId = "TestKeyId";
-        var keyResolver = new InMemoryTemporalNamespaceKeyIdResolver();
-        keyResolver.AddKeyId(@namespace, keyId);
-        var encryptor = new AesByteEncryptor();
-        encryptor.AddKey(keyId, new byte[32]);
         
-        var encoder = new CryptPayloadCodec(encryptor, keyResolver);
        
-        var sut = new MessageCodec(_apiDescriptor, encoder, new Logger<MessageCodec>(new LoggerFactory()));
         using var stream = new MemoryStream();
         stream.Write(grpcRequest, 0, grpcRequest.Length);
         var ctx = GrpcUtils.CreateGrpcHttpContext(
@@ -88,7 +93,7 @@ public class MessageCodecTest
         ctx.Request.ContentLength = grpcRequest.Length;
         var temporalContext = new TemporalContext
         {
-            Namespace = @namespace,
+            Namespace = _defaultNamespace,
             RequestMessageTypeName = ((IMessage)request).Descriptor.FullName,
             ResponseMessageTypeName = "temporal.api.workflowservice.v1.StartWorkflowExecutionResponse",
             Path = Guid.NewGuid().ToString(),
@@ -98,14 +103,16 @@ public class MessageCodecTest
             MessageTypeName = temporalContext.RequestMessageTypeName,
             TemporalContext = temporalContext,
         };
-        var transformed = sut.Encode(messageContext,stream.ToArray()[5..]);
+        var transformed = _sut.Encode(messageContext,stream.ToArray()[5..]);
         using var actualStream = new MemoryStream(transformed);
         var actual = StartWorkflowExecutionRequest.Parser.ParseFrom(actualStream);
         var actualPayload = actual.Input.Payloads_[0];
         Assert.Single(actual.Input.Payloads_);;
         Assert.True(actualPayload.Metadata.ContainsKey("encryption-key-id"));
         Assert.Equal(ByteString.CopyFromUtf8(CryptPayloadCodec.EncodingMetadataValue), actualPayload.Metadata["encoding"]);
-        Assert.True(encryptor.Decrypt(keyId, actualPayload.Data.ToByteArray()).SequenceEqual(payload.Data), "failed to decrypt transformed .Data");
+        Assert.True(_encryptor.Decrypt(_keyId, actualPayload.Data.ToByteArray()).SequenceEqual(payload.Data), "failed to decrypt transformed .Data");
+        
+        Assert.False(actual.SearchAttributes.IndexedFields["custom-field"].Metadata.ContainsKey("encryption-key-id"));;
     }
     
     [Fact]
@@ -159,16 +166,7 @@ public class MessageCodecTest
         };
         
         var grpcRequest = GrpcUtils.CreateGrpcFrame(request.ToByteArray());
-        var @namespace = "default";
-        var keyId = "TestKeyId";
-        var keyResolver = new InMemoryTemporalNamespaceKeyIdResolver();
-        keyResolver.AddKeyId(@namespace, keyId);
-        var encryptor = new AesByteEncryptor();
-        encryptor.AddKey(keyId, new byte[32]);
         
-        var encoder = new CryptPayloadCodec(encryptor, keyResolver);
-        
-        var sut = new MessageCodec(_apiDescriptor, encoder, new Logger<MessageCodec>(new LoggerFactory()));
         using var stream = new MemoryStream();
         stream.Write(grpcRequest, 0, grpcRequest.Length);
         var ctx = GrpcUtils.CreateGrpcHttpContext(
@@ -180,7 +178,7 @@ public class MessageCodecTest
         ctx.Request.ContentLength = grpcRequest.Length;
         var temporalContext = new TemporalContext
         {
-            Namespace = @namespace,
+            Namespace = _defaultNamespace,
             RequestMessageTypeName = ((IMessage)request).Descriptor.FullName,
             ResponseMessageTypeName = "temporal.api.workflowservice.v1.UpdateWorkflowExecutionResponse",
             Path = Guid.NewGuid().ToString(),
@@ -190,7 +188,7 @@ public class MessageCodecTest
             MessageTypeName = temporalContext.RequestMessageTypeName,
             TemporalContext = temporalContext,
         };
-        var transformed = sut.Encode(messageContext,stream.ToArray()[5..]);
+        var transformed = _sut.Encode(messageContext,stream.ToArray()[5..]);
         using var actualStream = new MemoryStream(transformed);
         var actual = UpdateWorkflowExecutionRequest.Parser.ParseFrom(actualStream);
         var actualInputArgsPayload = actual.Request.Input.Args.Payloads_[0];
@@ -198,25 +196,17 @@ public class MessageCodecTest
         Assert.Single(actual.Request.Input.Args.Payloads_);;
         Assert.True(actualInputArgsPayload.Metadata.ContainsKey("encryption-key-id"));
         Assert.Equal(ByteString.CopyFromUtf8(CryptPayloadCodec.EncodingMetadataValue), actualInputArgsPayload.Metadata["encoding"]);
-        Assert.True(encryptor.Decrypt(keyId, actualInputArgsPayload.Data.ToByteArray()).SequenceEqual(payload.Data), "failed to decrypt transformed .Data");
+        Assert.True(_encryptor.Decrypt(_keyId, actualInputArgsPayload.Data.ToByteArray()).SequenceEqual(payload.Data), "failed to decrypt transformed .Data");
         
         Assert.True(actualInputHeaderPayload.Metadata.ContainsKey("encryption-key-id"));
         Assert.Equal(ByteString.CopyFromUtf8(CryptPayloadCodec.EncodingMetadataValue), actualInputHeaderPayload.Metadata["encoding"]);
         Assert.Equal(ByteString.CopyFromUtf8("json/sexy"), actualInputHeaderPayload.Metadata["encoding-original"]);
-        Assert.True(encryptor.Decrypt(keyId, actualInputHeaderPayload.Data.ToByteArray()).SequenceEqual(header.Data), "failed to decrypt transformed .Data");
+        Assert.True(_encryptor.Decrypt(_keyId, actualInputHeaderPayload.Data.ToByteArray()).SequenceEqual(header.Data), "failed to decrypt transformed .Data");
     }
     
     [Fact]
     public async Task GivenPayloadsInExecutionHistoryResponse()
     {   
-        var @namespace = "default";
-        var keyId = "TestKeyId";
-        var keyResolver = new InMemoryTemporalNamespaceKeyIdResolver();
-        keyResolver.AddKeyId(@namespace, keyId);
-        var encryptor = new AesByteEncryptor();
-        encryptor.AddKey(keyId, new byte[32]);
-        
-        var encoder = new CryptPayloadCodec(encryptor, keyResolver);
         
         // Create ENCRYPTED payloads (simulating what comes from Temporal server)
         var payloads = new Payloads();
@@ -234,10 +224,10 @@ public class MessageCodecTest
                 {
                     ["encoding-original"] = ByteString.CopyFromUtf8("json/plain"),
                     ["version"] = ByteString.CopyFromUtf8("1.0.0"),
-                    ["encryption-key-id"] = ByteString.CopyFromUtf8(keyId),
+                    ["encryption-key-id"] = ByteString.CopyFromUtf8(_keyId),
                     ["encoding"] = ByteString.CopyFromUtf8(CryptPayloadCodec.EncodingMetadataValue)
                 },
-                Data = ByteString.CopyFrom(encryptor.Encrypt(keyId, plainData)) // Encrypted data
+                Data = ByteString.CopyFrom(_encryptor.Encrypt(_keyId, plainData)) // Encrypted data
             });
         }
         
@@ -314,7 +304,7 @@ public class MessageCodecTest
                                 new Temporalio.Api.Common.V1.Payload
                                 {
                                     Metadata = { { "encoding", ByteString.CopyFromUtf8("json/plain") } },
-                                    Data = ByteString.CopyFrom(encryptor.Encrypt(keyId,Encoding.UTF8.GetBytes("\"correlation-12345\"")))
+                                    Data = ByteString.CopyFrom(_encryptor.Encrypt(_keyId,Encoding.UTF8.GetBytes("\"correlation-12345\"")))
                                 }
                             }
                         }
@@ -332,10 +322,9 @@ public class MessageCodecTest
             });
         var grpcResponse = GrpcUtils.CreateGrpcFrame(response.ToByteArray());
         
-        var sut = new MessageCodec(_apiDescriptor, encoder, new Logger<MessageCodec>(new LoggerFactory()));
         var temporalContext = new TemporalContext
         {
-            Namespace = @namespace,
+            Namespace = _defaultNamespace,
             ResponseMessageTypeName = ((IMessage)response).Descriptor.FullName,
             RequestMessageTypeName = "temporal.api.workflowservice.v1.GetWorkflowExecutionHistoryRequest",
             Path = Guid.NewGuid().ToString(),
@@ -346,7 +335,7 @@ public class MessageCodecTest
             TemporalContext = temporalContext,
         };
         // Transform the RESPONSE (this will DECRYPT the payloads)
-        var transformed = sut.Decode(messageContext,grpcResponse[5..]);
+        var transformed = _sut.Decode(messageContext,grpcResponse[5..]);
             
         // Parse the transformed result
         using var actualStream = new MemoryStream(transformed);
