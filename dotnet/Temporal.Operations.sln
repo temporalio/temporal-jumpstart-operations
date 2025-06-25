@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Temporal.Operations.Proxy", "src\Temporal.Operations.Proxy\Temporal.Operations.Proxy.csproj", "{513506CC-305D-4562-938B-6498EE553268}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Temporal.Operations.Proxy.Tests", "tests\Temporal.Operations.Proxy.Tests\Temporal.Operations.Proxy.Tests.csproj", "{EFB790C3-F4D0-4911-9B1B-0EA45B2CB48E}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{513506CC-305D-4562-938B-6498EE553268}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{513506CC-305D-4562-938B-6498EE553268}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{513506CC-305D-4562-938B-6498EE553268}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{513506CC-305D-4562-938B-6498EE553268}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EFB790C3-F4D0-4911-9B1B-0EA45B2CB48E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EFB790C3-F4D0-4911-9B1B-0EA45B2CB48E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EFB790C3-F4D0-4911-9B1B-0EA45B2CB48E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EFB790C3-F4D0-4911-9B1B-0EA45B2CB48E}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
