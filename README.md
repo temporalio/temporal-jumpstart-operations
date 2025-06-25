@@ -16,13 +16,13 @@ This proxy is a [YARP](https://learn.microsoft.com/en-us/aspnet/core/fundamental
 1. Start the proxy 
 ```
 dotnet run --project dotnet/src/Temporal.Operations.Proxy
-# this should start on https://localhost:5000
-# note that this is SSL/TLS!
+# this should start on http://localhost:5000
+# note that this is NOT on SSL/TLS!
 ```
 
 2. Start a workflow
 ```
-temporal workflow start --tls \
+temporal workflow start  \
 	--address localhost:5000 \
 	--workflow-id foo \
 	--type MyWorkflow \
@@ -37,7 +37,7 @@ temporal workflow start --tls \
 4. The `data` should be encrypted 
 5. Now get the Workflow history and zoom in on the Workflow Execution Started Event to get the payload 
 ```
-temporal workflow show --tls \
+temporal workflow show  \
 	--address localhost:5000 \
 	--workflow-id foo \
 	--output | jq '.events[0].workflowExecutionStartedEventAttributes.input.payloads[0]'
