@@ -11,8 +11,7 @@ public interface IDescribeTemporalApi
     /// <summary>
     /// Loads Temporal API descriptors from a protobuf descriptor file
     /// </summary>
-    /// <param name="descriptorFilePath">Path to the .pb descriptor file</param>
-    Task LoadAsync(string descriptorFilePath);
+    Task LoadAsync();
 
     /// <summary>
     /// Gets the payload field lookup table for efficient field transformation decisions

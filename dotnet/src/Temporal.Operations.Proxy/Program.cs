@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
+using Microsoft.Extensions.Options;
 using Temporal.Operations.Proxy.Configuration;
 using Temporal.Operations.Proxy.Interfaces;
 using Temporal.Operations.Proxy.Middleware;
@@ -45,9 +46,19 @@ builder.Services.ConfigureHttpClientDefaults(http =>
         MaxConnectionsPerServer = 1024
     });
 });
+
+// Add configuration services
+builder.Services.Configure<TemporalApiConfiguration>(
+    builder.Configuration.GetSection("TemporalApi"));
+builder.Services.AddSingleton<IValidateOptions<TemporalApiConfiguration>, TemporalApiConfigurationValidator>();
+
+// Enable configuration monitoring (reloads when appsettings.json changes)
+// builder.Services.AddSingleton<IOptionsMonitor<TemporalApiConfiguration>>();
+
 // Add services to the container
 builder.Services.AddReverseProxy()
     .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
+
 
 // Register transformation services
 
@@ -68,8 +79,8 @@ builder.Services.AddSingleton<ICodec<MessageContext,byte[]>, MessageCodec>();
 builder.Services.AddSingleton<IDescribeTemporalApi, TemporalApiDescriptor>();
 
 // Services that load things at startup
-builder.Services.AddSingleton<IHostedService,EncryptionKeyLoader>();
-builder.Services.AddSingleton<IHostedService,TemporalApiLoader>();
+builder.Services.AddHostedService<EncryptionKeyLoader>();
+builder.Services.AddHostedService<TemporalApiLoader>();
 
 
 // Add logging
@@ -85,6 +96,19 @@ builder.Services.Configure<KestrelServerOptions>(options =>
 });
 
 var app = builder.Build();
+// Validate configuration on startup
+var temporalConfig = app.Services.GetRequiredService<IOptions<TemporalApiConfiguration>>();
+try
+{
+    var config = temporalConfig.Value; // This will trigger validation
+    app.Logger.LogInformation("Configuration validated successfully");
+}
+catch (OptionsValidationException ex)
+{
+    app.Logger.LogError("Configuration validation failed: {Errors}", 
+        string.Join(", ", ex.Failures));
+    throw;
+}
 // Configure the HTTP request pipeline
 if (app.Environment.IsDevelopment())
 {

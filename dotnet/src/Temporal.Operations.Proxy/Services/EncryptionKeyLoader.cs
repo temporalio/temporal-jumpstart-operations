@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Hosting;
+using Temporal.Operations.Proxy.Configuration;
 using Temporal.Operations.Proxy.Interfaces;
 
 namespace Temporal.Operations.Proxy.Services;

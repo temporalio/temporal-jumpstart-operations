@@ -1,6 +1,7 @@
 using Google.Protobuf;
 using Google.Protobuf.Reflection;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Options;
 using Temporal.Operations.Proxy.Interfaces;
 
 namespace Temporal.Operations.Proxy.Configuration;
@@ -16,11 +17,15 @@ public class TemporalApiDescriptor : IDescribeTemporalApi
     private IReadOnlyList<FileDescriptor> _fileDescriptors = new List<FileDescriptor>();
     private PayloadFieldLookup _payloadFieldLookup = new();
     private readonly ILogger<TemporalApiDescriptor> _logger;
+    private readonly IOptions<TemporalApiConfiguration> _temporalApiConfiguration;
+    private const string PayloadFullName = "temporal.api.common.v1.Payload";
+    private const string PayloadsFullName = "temporal.api.common.v1.Payloads";
+    private const string SearchAttributesFullName = "temporal.api.common.v1.SearchAttributes";
     
-    
-    public TemporalApiDescriptor(ILogger<TemporalApiDescriptor> logger)
+    public TemporalApiDescriptor(ILogger<TemporalApiDescriptor> logger, IOptions<TemporalApiConfiguration> temporalApiConfiguration)
     {
         _logger = logger;
+        _temporalApiConfiguration = temporalApiConfiguration;
     }
 
     /// <summary>
@@ -31,13 +36,13 @@ public class TemporalApiDescriptor : IDescribeTemporalApi
     /// <summary>
     /// Loads Temporal API descriptors from a protobuf descriptor file
     /// </summary>
-    /// <param name="descriptorFilePath">Path to the .pb descriptor file</param>
-    public async Task LoadAsync(string descriptorFilePath)
+    public async Task LoadAsync()
     {
+        var config = _temporalApiConfiguration.Value;
         try
         {
             // Load the descriptor file
-            _temporalDescriptorSet = await LoadTemporalDescriptorsAsync(descriptorFilePath);
+            _temporalDescriptorSet = await LoadTemporalDescriptorsAsync(config.DescriptorFilePath);
             
             // Build file descriptors
             _fileDescriptors = BuildFileDescriptors(_temporalDescriptorSet);
@@ -48,7 +53,7 @@ public class TemporalApiDescriptor : IDescribeTemporalApi
         }
         catch (Exception ex)
         {
-            throw new InvalidOperationException($"Failed to load Temporal API descriptors from {descriptorFilePath}", ex);
+            throw new InvalidOperationException($"Failed to load Temporal API descriptors from {config.DescriptorFilePath}", ex);
         }
     }
 
@@ -135,7 +140,7 @@ public class TemporalApiDescriptor : IDescribeTemporalApi
             if (serviceMethodName.StartsWith('/'))
             {
                 // Path from HTTPContext is reported with leading slash, remove it
-                serviceMethodName = serviceMethodName.Substring(1);
+                serviceMethodName = serviceMethodName[1..];
             }
             var parts = serviceMethodName.Split('/');
             if (parts.Length != 2) return null;
@@ -189,6 +194,10 @@ public class TemporalApiDescriptor : IDescribeTemporalApi
     /// </summary>
     public bool MessageRequiresEncoding(string messageTypeName)
     {
+        if (!_temporalApiConfiguration.Value.EncodeSearchAttributes && messageTypeName == SearchAttributesFullName)
+        {
+            return false;
+        }
         return PayloadFields.MessageTypeHasPayloadFields(messageTypeName);
     }
 
@@ -225,9 +234,7 @@ public class TemporalApiDescriptor : IDescribeTemporalApi
         {
             _logger.LogError(ex, "Failed to build file descriptors");
             throw;
-            // // Log warning and return empty list - this is safe
-            // Console.WriteLine($"Warning: Failed to build file descriptors: {ex.Message}");
-            // return new List<FileDescriptor>();
+            
         }
     }
 
@@ -255,8 +262,7 @@ public class TemporalApiDescriptor : IDescribeTemporalApi
         {
             _logger.LogError(ex, "Failed to build payload field lookup");
             throw;
-            // // Log warning but continue - we'll have an empty lookup which is safe
-            // Console.WriteLine($"Warning: Failed to build payload field lookup: {ex.Message}");
+            
         }
         
         return lookup;
@@ -323,6 +329,11 @@ public class TemporalApiDescriptor : IDescribeTemporalApi
         }
     }
 
+    private bool MessageSupportsEncoding(MessageDescriptor messageType)
+    {
+        return _temporalApiConfiguration.Value.EncodeSearchAttributes || messageType.FullName != SearchAttributesFullName;
+    }
+
     /// <summary>
     /// Processes a single message type to identify payload fields
     /// </summary>
@@ -334,13 +345,14 @@ public class TemporalApiDescriptor : IDescribeTemporalApi
         {
             try
             {
-                if (IsDirectPayloadField(field))
+                if (IsDirectPayloadField(field) && MessageSupportsEncoding(messageType))
                 {
                     // This field directly contains Payload or Payloads
                     lookup.AddPayloadField(messageType, field);
                     messageHasPayloadFields = true;
                 }
-                else if (IsMessageOrGroupField(field) && MessageTypeContainsPayloadFields(field.MessageType))
+                else if (IsMessageOrGroupField(field) && 
+                         MessageTypeContainsPayloadFields(field.MessageType) && MessageSupportsEncoding(messageType))
                 {
                     // This field contains nested messages with payload fields
                     lookup.AddNestedPayloadField(messageType, field);
@@ -382,8 +394,7 @@ public class TemporalApiDescriptor : IDescribeTemporalApi
 
         try
         {
-            return field.MessageType?.FullName == "temporal.api.common.v1.Payload" ||
-                   field.MessageType?.FullName == "temporal.api.common.v1.Payloads";
+            return field.MessageType?.FullName is PayloadFullName or PayloadsFullName;
         }
         catch (Exception ex)
         {

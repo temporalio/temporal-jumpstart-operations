@@ -3,9 +3,7 @@ using Google.Protobuf;
 using Google.Protobuf.Collections;
 using Google.Protobuf.WellKnownTypes;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Temporal.Operations.Proxy.Configuration;
 using Temporal.Operations.Proxy.Interfaces;
 using Temporal.Operations.Proxy.Models;
 using Temporal.Operations.Proxy.Services;
@@ -20,17 +18,14 @@ namespace Temporal.Operations.Proxy.Tests.Services;
 
 public class MessageCodecTest: IClassFixture<TemporalApiDescriptorFixture>
 {
-    private readonly IConfigurationRoot _configuration;
-    private readonly string _descriptorPath = "temporal-api.binpb";
-    private readonly TemporalApiDescriptor _apiDescriptor;
-    private ICodec<PayloadContext, byte[]> _encoder;
-    private string _defaultNamespace = "default";
-    private AesByteEncryptor _encryptor;
-    private string _keyId;
-    private MessageCodec _sut;
+    private readonly ICodec<PayloadContext, byte[]> _encoder;
+    private readonly string _defaultNamespace;
+    private readonly AesByteEncryptor _encryptor;
+    private readonly string _keyId;
+    private readonly MessageCodec _sut;
     public MessageCodecTest(TemporalApiDescriptorFixture fixture)
     {
-        _apiDescriptor = fixture.TemporalApiDescriptor;
+        var apiDescriptor = fixture.TemporalApiDescriptor;
         
         _defaultNamespace = "default";
         _keyId = "TestKeyId";
@@ -41,7 +36,7 @@ public class MessageCodecTest: IClassFixture<TemporalApiDescriptorFixture>
         
         _encoder = new CryptPayloadCodec(_encryptor, keyResolver);
         
-        _sut = new MessageCodec(_apiDescriptor, _encoder, new Logger<MessageCodec>(new LoggerFactory()));
+        _sut = new MessageCodec(apiDescriptor, _encoder, new Logger<MessageCodec>(new LoggerFactory()));
     }
 
     [Fact]

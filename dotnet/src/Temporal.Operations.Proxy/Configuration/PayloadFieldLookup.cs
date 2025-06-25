@@ -16,7 +16,7 @@ public class PayloadFieldLookup
     
     // Key: "message.type.name", Value: MessageDescriptor for message types that contain payload fields
     private readonly Dictionary<string, MessageDescriptor> _messageTypesWithPayloads = new();
-
+   
     /// <summary>
     /// Gets the FieldDescriptor for a direct payload field
     /// </summary>
