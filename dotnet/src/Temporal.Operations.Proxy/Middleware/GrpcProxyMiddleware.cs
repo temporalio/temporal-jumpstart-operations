@@ -101,7 +101,7 @@ namespace Temporal.Operations.Proxy.Middleware
                     return;
                 }
 
-                _logger.LogInformation("Processing Temporal gRPC call for path: {Path}", temporalContext.Path);
+                _logger.LogDebug("Processing Temporal gRPC call for path: {Path}", temporalContext.Path);
                 
                 if (_temporalApi.MessageRequiresEncoding(temporalContext.RequestMessageTypeName))
                 {
@@ -112,7 +112,7 @@ namespace Temporal.Operations.Proxy.Middleware
                 {
                     // early return if no transformation is needed
                     await _next(context);
-                    _logger.LogInformation("Completed gRPC call {Path}", temporalContext.Path);
+                    _logger.LogDebug("Completed gRPC call {Path}", temporalContext.Path);
                     return;
                 }
                 // Store original response body stream
@@ -127,7 +127,7 @@ namespace Temporal.Operations.Proxy.Middleware
                 // Transform response body
                 await TransformResponseBody(context, temporalContext, originalResponseBodyStream, responseBodyStream);
 
-                _logger.LogInformation("Completed gRPC call {Path}", temporalContext.Path);
+                _logger.LogDebug("Completed gRPC call {Path}", temporalContext.Path);
             }
             catch (Exception ex)
             {
@@ -228,81 +228,7 @@ namespace Temporal.Operations.Proxy.Middleware
             }
         }
 
-        // private async Task TransformRequestBody(HttpContext context)
-        // {
-        //     try
-        //     {
-        //         // Read the original request body
-        //         context.Request.EnableBuffering();
-        //         using var reader = new StreamReader(context.Request.Body, leaveOpen: true);
-        //         var requestBodyBytes = await ReadAllBytesAsync(context.Request.Body);
-        //         context.Request.Body.Position = 0;
-        //
-        //         if (requestBodyBytes.Length == 0)
-        //         {
-        //             _logger.LogDebug("Empty request body, skipping transformation");
-        //             return;
-        //         }
-        //
-        //         // Transform the request
-        //         var transformedBytes = await _payloadProcessor.ProcessRequest(requestBodyBytes, context);
-        //
-        //         // Replace the request body
-        //         var transformedStream = new MemoryStream(transformedBytes);
-        //         context.Request.Body = transformedStream;
-        //         context.Request.ContentLength = transformedBytes.Length;
-        //
-        //         _logger.LogDebug("Request body transformed: {OriginalSize} -> {TransformedSize} bytes",
-        //             requestBodyBytes.Length, transformedBytes.Length);
-        //     }
-        //     catch (Exception ex)
-        //     {
-        //         _logger.LogError(ex, "Failed to transform request body");
-        //         throw;
-        //     }
-        // }
-
-        // private async Task TransformResponseBody(
-        //     HttpContext context, 
-        //     Stream originalResponseStream, 
-        //     MemoryStream capturedResponseStream)
-        // {
-        //     try
-        //     {
-        //         capturedResponseStream.Position = 0;
-        //         var responseBodyBytes = capturedResponseStream.ToArray();
-        //
-        //         if (responseBodyBytes.Length == 0)
-        //         {
-        //             _logger.LogDebug("Empty response body, skipping transformation");
-        //             return;
-        //         }
-        //
-        //         // Transform the response
-        //         var transformedBytes = await _payloadProcessor.ProcessResponse(responseBodyBytes, context);
-        //
-        //         // Write transformed response to the original stream
-        //         context.Response.ContentLength = transformedBytes.Length;
-        //         await originalResponseStream.WriteAsync(transformedBytes);
-        //
-        //         _logger.LogDebug("Response body transformed: {OriginalSize} -> {TransformedSize} bytes",
-        //             responseBodyBytes.Length, transformedBytes.Length);
-        //     }
-        //     catch (Exception ex)
-        //     {
-        //         _logger.LogError(ex, "Failed to transform response body");
-        //         
-        //         // On error, pass through the original response
-        //         capturedResponseStream.Position = 0;
-        //         await capturedResponseStream.CopyToAsync(originalResponseStream);
-        //     }
-        //     finally
-        //     {
-        //         // Restore original response stream
-        //         context.Response.Body = originalResponseStream;
-        //     }
-        // }
-
+        
         private static async Task<byte[]> ReadAllBytesAsync(Stream stream)
         {
             using var memoryStream = new MemoryStream();

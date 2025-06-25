@@ -17,6 +17,7 @@ public class TemporalHealthCheck : IHealthCheck
         HealthCheckContext context,
         CancellationToken cancellationToken = default)
     {
+        // TODO implement grpc call to GetSystemInfo for each Namespace
         return new HealthCheckResult(HealthStatus.Healthy);
         // var namespaces = _clientManager.GetAvailableNamespaces().ToList();
         //

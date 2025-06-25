@@ -470,8 +470,8 @@ public class TemporalApiDescriptor : IDescribeTemporalApi
 
 public class ServiceMethodInfo
 {
-    public string RequestType { get; set; }
-    public string ResponseType { get; set; }
+    public required string RequestType { get; set; }
+    public required string ResponseType { get; set; }
 }
 
 public class PayloadFieldStats

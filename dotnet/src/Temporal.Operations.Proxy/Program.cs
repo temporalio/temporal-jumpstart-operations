@@ -17,13 +17,13 @@ builder.WebHost.ConfigureKestrel(options =>
 {
     options.ListenLocalhost(5000, listenOptions =>
     {
-        listenOptions.UseHttps(); // This will use the dev certificate
-// If you're using HTTPS
-        options.ConfigureHttpsDefaults(httpsOptions =>
-        {
-            httpsOptions.SslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13;
-            httpsOptions.ClientCertificateMode = ClientCertificateMode.NoCertificate;
-        });
+//         listenOptions.UseHttps(); // This will use the dev certificate
+// // If you're using HTTPS
+//         options.ConfigureHttpsDefaults(httpsOptions =>
+//         {
+//             httpsOptions.SslProtocols =  SslProtocols.Tls13;
+//             httpsOptions.ClientCertificateMode = ClientCertificateMode.NoCertificate;
+//         });
         listenOptions.Protocols = HttpProtocols.Http2;
     });
     
@@ -89,11 +89,8 @@ builder.Services.AddGrpc();
 // // Add gRPC services
 // builder.Services.AddGrpcReflection();
 // app.MapGrpcReflectionService();
-builder.Logging.AddFilter("Microsoft.AspNetCore.Server.Kestrel", LogLevel.Debug);
-builder.Services.Configure<KestrelServerOptions>(options =>
-{
-    options.Limits.MaxRequestBodySize = null;
-});
+builder.Logging.AddFilter("Microsoft.AspNetCore.Server.Kestrel", LogLevel.Information);
+builder.Logging.AddFilter("Yarp.ReverseProxy.Forwarder.HttpForwarder", LogLevel.Error);
 
 var app = builder.Build();
 // Validate configuration on startup
