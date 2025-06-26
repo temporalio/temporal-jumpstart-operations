@@ -1,8 +1,10 @@
+using System.Diagnostics;
 using System.Security.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
+using Microsoft.Azure.Cosmos;
 using Microsoft.Extensions.Options;
 using Temporal.Operations.Proxy.Configuration;
 using Temporal.Operations.Proxy.Interfaces;
@@ -91,6 +93,23 @@ builder.Services.AddGrpc();
 // app.MapGrpcReflectionService();
 builder.Logging.AddFilter("Microsoft.AspNetCore.Server.Kestrel", LogLevel.Information);
 builder.Logging.AddFilter("Yarp.ReverseProxy.Forwarder.HttpForwarder", LogLevel.Error);
+
+
+// Cosmos configuration
+// Add CosmosDB client
+builder.Services.AddSingleton<CosmosClient>(serviceProvider =>
+{
+    var configuration = serviceProvider.GetService<IConfiguration>();
+    Debug.Assert(configuration != null, nameof(configuration) + " != null");
+    var connectionString = configuration.GetConnectionString("CosmosDB");
+    
+    // Alternative: Use account endpoint and key
+    // var endpoint = configuration["CosmosDB:Endpoint"];
+    // var key = configuration["CosmosDB:Key"];
+    // return new CosmosClient(endpoint, key);
+    
+    return new CosmosClient(connectionString);
+});
 
 var app = builder.Build();
 // Validate configuration on startup
