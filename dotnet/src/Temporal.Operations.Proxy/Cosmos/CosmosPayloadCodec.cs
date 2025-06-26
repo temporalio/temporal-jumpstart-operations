@@ -32,7 +32,8 @@ public class CosmosPayloadCodec : ICodec<PayloadContext, byte[]>, ICodec<Payload
         {
             id=id, 
             value = value,
-            temporalNamespace = context.Namespace
+            temporalNamespace = context.Namespace,
+            ttl = 60 * 60 * 24 * 180 // 180 days TTL
         };
         // TODO janky async/sync mix
         _dataService.CreateItemAsync(cp,cp.temporalNamespace, CosmosContainerName).Wait();

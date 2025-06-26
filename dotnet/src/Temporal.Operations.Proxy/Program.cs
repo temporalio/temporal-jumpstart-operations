@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Extensions.Options;
 using Temporal.Operations.Proxy.Configuration;
+using Temporal.Operations.Proxy.Cosmos;
 using Temporal.Operations.Proxy.Interfaces;
 using Temporal.Operations.Proxy.Middleware;
 using Temporal.Operations.Proxy.Models;
@@ -74,7 +75,8 @@ builder.Services.AddSingleton<AesByteEncryptor>(_ => new AesByteEncryptor());
 builder.Services.AddSingleton<IEncrypt>(p => p.GetRequiredService<AesByteEncryptor>());
 builder.Services.AddSingleton<IAddEncryptionKey>(p => p.GetRequiredService<AesByteEncryptor>());
 
-builder.Services.AddSingleton<ICodec<PayloadContext, byte[]>, CryptPayloadCodec>();
+// encryption direction
+// builder.Services.AddSingleton<ICodec<PayloadContext, byte[]>, CryptPayloadCodec>();
 builder.Services.AddSingleton<ICodec<MessageContext,byte[]>, MessageCodec>();
 
 // Register Temporal API descriptor services
@@ -110,6 +112,9 @@ builder.Services.AddSingleton<CosmosClient>(serviceProvider =>
     
     return new CosmosClient(connectionString);
 });
+
+builder.Services.AddSingleton<IDataService, DataService>();
+builder.Services.AddSingleton<ICodec<PayloadContext, byte[]>, CosmosPayloadCodec>();
 
 var app = builder.Build();
 // Validate configuration on startup

@@ -30,7 +30,10 @@ public class DataService : IDataService
     public async Task<T> CreateItemAsync<T>(T item, string partitionKey, string containerName)
     {
         var container = _cosmosClient.GetContainer(_databaseName, containerName);
-        var response = await container.CreateItemAsync(item, new PartitionKey(partitionKey));
+        var response = await container.CreateItemAsync(
+            item, 
+            new PartitionKey(partitionKey), new ItemRequestOptions{}
+            );
         return response.Resource;
     }
 
