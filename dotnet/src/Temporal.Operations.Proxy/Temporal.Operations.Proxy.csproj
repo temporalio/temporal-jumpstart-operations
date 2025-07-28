@@ -11,7 +11,9 @@
         <PackageReference Include="Grpc.AspNetCore" Version="2.71.0" />
         <PackageReference Include="Grpc.AspNetCore.Server.Reflection" Version="2.71.0" />
         <PackageReference Include="Grpc.Net.Client" Version="2.71.0" />
+        <PackageReference Include="Microsoft.Azure.Cosmos" Version="3.52.0" />
         <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
+        <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
         <PackageReference Include="Temporalio" Version="1.7.0" />
         <PackageReference Include="Yarp.ReverseProxy" Version="2.3.0" />
     </ItemGroup>

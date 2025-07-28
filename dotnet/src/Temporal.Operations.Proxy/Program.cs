@@ -1,10 +1,13 @@
+using System.Diagnostics;
 using System.Security.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
+using Microsoft.Azure.Cosmos;
 using Microsoft.Extensions.Options;
 using Temporal.Operations.Proxy.Configuration;
+using Temporal.Operations.Proxy.Cosmos;
 using Temporal.Operations.Proxy.Interfaces;
 using Temporal.Operations.Proxy.Middleware;
 using Temporal.Operations.Proxy.Models;
@@ -47,9 +50,8 @@ builder.Services.ConfigureHttpClientDefaults(http =>
     });
 });
 
-// Add configuration services
-builder.Services.Configure<TemporalApiConfiguration>(
-    builder.Configuration.GetSection("TemporalApi"));
+// Add unified configuration
+builder.Services.Configure<AppConfiguration>(builder.Configuration);
 builder.Services.AddSingleton<IValidateOptions<TemporalApiConfiguration>, TemporalApiConfigurationValidator>();
 
 // Enable configuration monitoring (reloads when appsettings.json changes)
@@ -72,7 +74,8 @@ builder.Services.AddSingleton<AesByteEncryptor>(_ => new AesByteEncryptor());
 builder.Services.AddSingleton<IEncrypt>(p => p.GetRequiredService<AesByteEncryptor>());
 builder.Services.AddSingleton<IAddEncryptionKey>(p => p.GetRequiredService<AesByteEncryptor>());
 
-builder.Services.AddSingleton<ICodec<PayloadContext, byte[]>, CryptPayloadCodec>();
+// encryption direction
+// builder.Services.AddSingleton<ICodec<PayloadContext, byte[]>, CryptPayloadCodec>();
 builder.Services.AddSingleton<ICodec<MessageContext,byte[]>, MessageCodec>();
 
 // Register Temporal API descriptor services
@@ -92,13 +95,48 @@ builder.Services.AddGrpc();
 builder.Logging.AddFilter("Microsoft.AspNetCore.Server.Kestrel", LogLevel.Information);
 builder.Logging.AddFilter("Yarp.ReverseProxy.Forwarder.HttpForwarder", LogLevel.Error);
 
+
+// Cosmos configuration
+// Add CosmosDB client
+builder.Services.AddSingleton<CosmosClient>(serviceProvider =>
+{
+    var configuration = serviceProvider.GetService<IConfiguration>();
+    Debug.Assert(configuration != null, nameof(configuration) + " != null");
+    var connectionString = configuration.GetConnectionString("CosmosDB");
+    
+    // Alternative: Use account endpoint and key
+    // var endpoint = configuration["CosmosDB:Endpoint"];
+    // var key = configuration["CosmosDB:Key"];
+    // return new CosmosClient(endpoint, key);
+    
+    return new CosmosClient(connectionString);
+});
+
+builder.Services.AddSingleton<IDataService, DataService>();
+
+// Conditional codec registration based on encoding strategy
+builder.Services.AddSingleton<ICodec<PayloadContext, byte[]>>(serviceProvider =>
+{
+    var appConfig = serviceProvider.GetRequiredService<IOptions<AppConfiguration>>().Value;
+    return appConfig.Encoding.Strategy.ToLowerInvariant() switch
+    {
+        "cosmosdb" => serviceProvider.GetRequiredService<CosmosPayloadCodec>(),
+        "default" or _ => serviceProvider.GetRequiredService<CryptPayloadCodec>()
+    };
+});
+
+// Register both implementations
+builder.Services.AddSingleton<CosmosPayloadCodec>();
+builder.Services.AddSingleton<CryptPayloadCodec>();
+
 var app = builder.Build();
 // Validate configuration on startup
-var temporalConfig = app.Services.GetRequiredService<IOptions<TemporalApiConfiguration>>();
+var appConfig = app.Services.GetRequiredService<IOptions<AppConfiguration>>();
 try
 {
-    var config = temporalConfig.Value; // This will trigger validation
-    app.Logger.LogInformation("Configuration validated successfully");
+    var config = appConfig.Value; // This will trigger validation
+    app.Logger.LogInformation("Configuration validated successfully. Using encoding strategy: {Strategy}", 
+        config.Encoding.Strategy);
 }
 catch (OptionsValidationException ex)
 {

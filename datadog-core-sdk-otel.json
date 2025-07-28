@@ -1,0 +1,1031 @@
+{
+  "title": "Temporal Core SDK (OTel) Metrics",
+  "description": "Dashboard for monitoring Temporal .NET Core SDK metrics via OpenTelemetry - converted from Grafana",
+  "template_variables": [
+    {
+      "name": "namespace",
+      "prefix": "namespace",
+      "available_values": [],
+      "default": "*"
+    },
+    {
+      "name": "service",
+      "prefix": "service",
+      "available_values": [],
+      "default": "*"
+    }
+  ],
+  "widgets": [
+    {
+      "id": 1,
+      "definition": {
+        "type": "note",
+        "content": "## CPU / Memory\n\nMetrics from the Temporal SDK should be complemented with the workers' CPU and memory usage statistics.",
+        "background_color": "blue",
+        "font_size": "14",
+        "text_align": "left",
+        "show_tick": false,
+        "tick_pos": "50%",
+        "tick_edge": "left"
+      },
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "width": 12,
+        "height": 2
+      }
+    },
+    {
+      "id": 2,
+      "definition": {
+        "type": "timeseries",
+        "requests": [
+          {
+            "q": "sum:temporal_request{namespace:$namespace} by {namespace}.as_rate()",
+            "display_type": "line",
+            "style": {
+              "palette": "dog_classic",
+              "line_type": "solid",
+              "line_width": "normal"
+            },
+            "metadata": [
+              {
+                "expression": "sum:temporal_request{namespace:$namespace} by {namespace}.as_rate()",
+                "alias_name": "[request] namespace: {{namespace.name}}"
+              }
+            ]
+          },
+          {
+            "q": "sum:temporal_request_failure{namespace:$namespace} by {namespace}.as_rate()",
+            "display_type": "line",
+            "style": {
+              "palette": "warm",
+              "line_type": "solid",
+              "line_width": "normal"
+            },
+            "metadata": [
+              {
+                "expression": "sum:temporal_request_failure{namespace:$namespace} by {namespace}.as_rate()",
+                "alias_name": "[failure] namespace: {{namespace.name}}"
+              }
+            ]
+          }
+        ],
+        "title": "RPC Requests Vs Failures",
+        "title_size": "16",
+        "title_align": "left",
+        "show_legend": true,
+        "legend_columns": ["value", "avg", "sum", "min", "max"],
+        "legend_layout": "auto",
+        "yaxis": {
+          "scale": "linear",
+          "label": "",
+          "include_zero": true,
+          "min": "auto",
+          "max": "auto"
+        }
+      },
+      "layout": {
+        "x": 0,
+        "y": 2,
+        "width": 6,
+        "height": 3
+      }
+    },
+    {
+      "id": 3,
+      "definition": {
+        "type": "timeseries",
+        "requests": [
+          {
+            "q": "sum:temporal_request_failure{namespace:$namespace} by {namespace,operation}.as_rate()",
+            "display_type": "line",
+            "style": {
+              "palette": "warm",
+              "line_type": "solid",
+              "line_width": "normal"
+            },
+            "metadata": [
+              {
+                "expression": "sum:temporal_request_failure{namespace:$namespace} by {namespace,operation}.as_rate()",
+                "alias_name": "namespace: {{namespace.name}}; operation: {{operation.name}}"
+              }
+            ]
+          }
+        ],
+        "title": "RPC Failures Per Operation",
+        "title_size": "16",
+        "title_align": "left",
+        "show_legend": true,
+        "legend_columns": ["value", "avg", "sum", "min", "max"],
+        "legend_layout": "auto"
+      },
+      "layout": {
+        "x": 6,
+        "y": 2,
+        "width": 6,
+        "height": 3
+      }
+    },
+    {
+      "id": 4,
+      "definition": {
+        "type": "timeseries",
+        "requests": [
+          {
+            "q": "sum:temporal_request{namespace:$namespace} by {namespace,operation}.as_rate()",
+            "display_type": "line",
+            "style": {
+              "palette": "dog_classic",
+              "line_type": "solid",
+              "line_width": "normal"
+            },
+            "metadata": [
+              {
+                "expression": "sum:temporal_request{namespace:$namespace} by {namespace,operation}.as_rate()",
+                "alias_name": "namespace: {{namespace.name}}; operation: {{operation.name}}"
+              }
+            ]
+          }
+        ],
+        "title": "RPC Requests Per Operation",
+        "title_size": "16",
+        "title_align": "left",
+        "show_legend": true,
+        "legend_columns": ["value", "avg", "sum", "min", "max"],
+        "legend_layout": "auto"
+      },
+      "layout": {
+        "x": 0,
+        "y": 5,
+        "width": 6,
+        "height": 3
+      }
+    },
+    {
+      "id": 5,
+      "definition": {
+        "type": "timeseries",
+        "requests": [
+          {
+            "q": "p95:temporal_request_latency{namespace:$namespace} by {namespace,operation}",
+            "display_type": "line",
+            "style": {
+              "palette": "purple",
+              "line_type": "solid",
+              "line_width": "normal"
+            },
+            "metadata": [
+              {
+                "expression": "p95:temporal_request_latency{namespace:$namespace} by {namespace,operation}",
+                "alias_name": "namespace: {{namespace.name}}; operation: {{operation.name}}"
+              }
+            ]
+          }
+        ],
+        "title": "RPC Latencies (p95)",
+        "title_size": "16",
+        "title_align": "left",
+        "show_legend": true,
+        "legend_columns": ["value", "avg", "sum", "min", "max"],
+        "legend_layout": "auto",
+        "yaxis": {
+          "scale": "linear",
+          "label": "milliseconds",
+          "include_zero": true,
+          "min": "auto",
+          "max": "auto"
+        }
+      },
+      "layout": {
+        "x": 6,
+        "y": 5,
+        "width": 6,
+        "height": 3
+      }
+    },
+    {
+      "id": 6,
+      "definition": {
+        "type": "timeseries",
+        "requests": [
+          {
+            "q": "sum:temporal_long_request_failure{namespace:$namespace} by {namespace,operation}.as_rate()",
+            "display_type": "line",
+            "style": {
+              "palette": "warm",
+              "line_type": "solid",
+              "line_width": "normal"
+            },
+            "metadata": [
+              {
+                "expression": "sum:temporal_long_request_failure{namespace:$namespace} by {namespace,operation}.as_rate()",
+                "alias_name": "namespace: {{namespace.name}}; operation: {{operation.name}}"
+              }
+            ]
+          }
+        ],
+        "title": "Long RPC Failures Per Operation",
+        "title_size": "16",
+        "title_align": "left",
+        "show_legend": true,
+        "legend_columns": ["value", "avg", "sum", "min", "max"],
+        "legend_layout": "auto"
+      },
+      "layout": {
+        "x": 0,
+        "y": 8,
+        "width": 6,
+        "height": 3
+      }
+    },
+    {
+      "id": 7,
+      "definition": {
+        "type": "timeseries",
+        "requests": [
+          {
+            "q": "p95:temporal_long_request_latency{namespace:$namespace} by {namespace,operation}",
+            "display_type": "line",
+            "style": {
+              "palette": "purple",
+              "line_type": "solid",
+              "line_width": "normal"
+            },
+            "metadata": [
+              {
+                "expression": "p95:temporal_long_request_latency{namespace:$namespace} by {namespace,operation}",
+                "alias_name": "namespace: {{namespace.name}}; operation: {{operation.name}}"
+              }
+            ]
+          }
+        ],
+        "title": "Long RPC Latencies (p95)",
+        "title_size": "16",
+        "title_align": "left",
+        "show_legend": true,
+        "legend_columns": ["value", "avg", "sum", "min", "max"],
+        "legend_layout": "auto",
+        "yaxis": {
+          "scale": "linear",
+          "label": "milliseconds",
+          "include_zero": true,
+          "min": "auto",
+          "max": "auto"
+        }
+      },
+      "layout": {
+        "x": 6,
+        "y": 8,
+        "width": 6,
+        "height": 3
+      }
+    },
+    {
+      "id": 8,
+      "definition": {
+        "type": "timeseries",
+        "requests": [
+          {
+            "q": "sum:temporal_workflow_completed{namespace:$namespace} by {namespace,workflow_type}.as_rate()",
+            "display_type": "line",
+            "style": {
+              "palette": "green",
+              "line_type": "solid",
+              "line_width": "normal"
+            },
+            "metadata": [
+              {
+                "expression": "sum:temporal_workflow_completed{namespace:$namespace} by {namespace,workflow_type}.as_rate()",
+                "alias_name": "namespace: {{namespace.name}}; WorkflowType: {{workflow_type.name}}"
+              }
+            ]
+          }
+        ],
+        "title": "Workflow Completion",
+        "title_size": "16",
+        "title_align": "left",
+        "show_legend": true,
+        "legend_columns": ["value", "avg", "sum", "min", "max"],
+        "legend_layout": "auto"
+      },
+      "layout": {
+        "x": 0,
+        "y": 11,
+        "width": 6,
+        "height": 3
+      }
+    },
+    {
+      "id": 9,
+      "definition": {
+        "type": "timeseries",
+        "requests": [
+          {
+            "q": "p95:temporal_workflow_endtoend_latency{namespace:$namespace} by {namespace,workflow_type}",
+            "display_type": "line",
+            "style": {
+              "palette": "purple",
+              "line_type": "solid",
+              "line_width": "normal"
+            },
+            "metadata": [
+              {
+                "expression": "p95:temporal_workflow_endtoend_latency{namespace:$namespace} by {namespace,workflow_type}",
+                "alias_name": "namespace: {{namespace.name}}; WorkflowType: {{workflow_type.name}}"
+              }
+            ]
+          }
+        ],
+        "title": "Workflow End-To-End Latencies",
+        "title_size": "16",
+        "title_align": "left",
+        "show_legend": true,
+        "legend_columns": ["value", "avg", "sum", "min", "max"],
+        "legend_layout": "auto",
+        "yaxis": {
+          "scale": "linear",
+          "label": "milliseconds",
+          "include_zero": true,
+          "min": "auto",
+          "max": "auto"
+        }
+      },
+      "layout": {
+        "x": 6,
+        "y": 11,
+        "width": 6,
+        "height": 3
+      }
+    },
+    {
+      "id": 10,
+      "definition": {
+        "type": "timeseries",
+        "requests": [
+          {
+            "q": "sum:temporal_workflow_failed{namespace:$namespace} by {namespace,workflow_type}.as_rate()",
+            "display_type": "line",
+            "style": {
+              "palette": "warm",
+              "line_type": "solid",
+              "line_width": "normal"
+            },
+            "metadata": [
+              {
+                "expression": "sum:temporal_workflow_failed{namespace:$namespace} by {namespace,workflow_type}.as_rate()",
+                "alias_name": "namespace: {{namespace.name}}; WorkflowType: {{workflow_type.name}}"
+              }
+            ]
+          }
+        ],
+        "title": "Workflow Failures By Type",
+        "title_size": "16",
+        "title_align": "left",
+        "show_legend": true,
+        "legend_columns": ["value", "avg", "sum", "min", "max"],
+        "legend_layout": "auto"
+      },
+      "layout": {
+        "x": 0,
+        "y": 14,
+        "width": 6,
+        "height": 3
+      }
+    },
+    {
+      "id": 11,
+      "definition": {
+        "type": "timeseries",
+        "requests": [
+          {
+            "q": "sum:temporal_workflow_task_queue_poll_succeed{namespace:$namespace} by {namespace,task_queue}.as_rate()",
+            "display_type": "line",
+            "style": {
+              "palette": "dog_classic",
+              "line_type": "solid",
+              "line_width": "normal"
+            },
+            "metadata": [
+              {
+                "expression": "sum:temporal_workflow_task_queue_poll_succeed{namespace:$namespace} by {namespace,task_queue}.as_rate()",
+                "alias_name": "namespace: {{namespace.name}}; task_queue: {{task_queue.name}}"
+              }
+            ]
+          }
+        ],
+        "title": "Workflow Task Throughput",
+        "title_size": "16",
+        "title_align": "left",
+        "show_legend": true,
+        "legend_columns": ["value", "avg", "sum", "min", "max"],
+        "legend_layout": "auto"
+      },
+      "layout": {
+        "x": 6,
+        "y": 14,
+        "width": 6,
+        "height": 3
+      }
+    },
+    {
+      "id": 12,
+      "definition": {
+        "type": "timeseries",
+        "requests": [
+          {
+            "q": "p95:temporal_workflow_task_schedule_to_start_latency{namespace:$namespace} by {namespace,task_queue}",
+            "display_type": "line",
+            "style": {
+              "palette": "purple",
+              "line_type": "solid",
+              "line_width": "normal"
+            },
+            "metadata": [
+              {
+                "expression": "p95:temporal_workflow_task_schedule_to_start_latency{namespace:$namespace} by {namespace,task_queue}",
+                "alias_name": "namespace: {{namespace.name}}; task_queue: {{task_queue.name}}"
+              }
+            ]
+          }
+        ],
+        "title": "Workflow Task Schedule To Start (p95)",
+        "title_size": "16",
+        "title_align": "left",
+        "show_legend": true,
+        "legend_columns": ["value", "avg", "sum", "min", "max"],
+        "legend_layout": "auto",
+        "yaxis": {
+          "scale": "linear",
+          "label": "milliseconds",
+          "include_zero": true,
+          "min": "auto",
+          "max": "auto"
+        }
+      },
+      "layout": {
+        "x": 0,
+        "y": 17,
+        "width": 6,
+        "height": 3
+      }
+    },
+    {
+      "id": 13,
+      "definition": {
+        "type": "timeseries",
+        "requests": [
+          {
+            "q": "sum:temporal_workflow_task_execution_failed{namespace:$namespace} by {namespace,workflow_type}.as_rate()",
+            "display_type": "line",
+            "style": {
+              "palette": "warm",
+              "line_type": "solid",
+              "line_width": "normal"
+            },
+            "metadata": [
+              {
+                "expression": "sum:temporal_workflow_task_execution_failed{namespace:$namespace} by {namespace,workflow_type}.as_rate()",
+                "alias_name": "namespace: {{namespace.name}}; workflow_type: {{workflow_type.name}}"
+              }
+            ]
+          }
+        ],
+        "title": "Workflow Task Failed",
+        "title_size": "16",
+        "title_align": "left",
+        "show_legend": true,
+        "legend_columns": ["value", "avg", "sum", "min", "max"],
+        "legend_layout": "auto"
+      },
+      "layout": {
+        "x": 6,
+        "y": 17,
+        "width": 6,
+        "height": 3
+      }
+    },
+    {
+      "id": 14,
+      "definition": {
+        "type": "timeseries",
+        "requests": [
+          {
+            "q": "p95:temporal_workflow_task_execution_latency{namespace:$namespace} by {namespace,workflow_type}",
+            "display_type": "line",
+            "style": {
+              "palette": "purple",
+              "line_type": "solid",
+              "line_width": "normal"
+            },
+            "metadata": [
+              {
+                "expression": "p95:temporal_workflow_task_execution_latency{namespace:$namespace} by {namespace,workflow_type}",
+                "alias_name": "namespace: {{namespace.name}}; workflow_type: {{workflow_type.name}}"
+              }
+            ]
+          }
+        ],
+        "title": "Workflow Task Execution Latency (p95)",
+        "title_size": "16",
+        "title_align": "left",
+        "show_legend": true,
+        "legend_columns": ["value", "avg", "sum", "min", "max"],
+        "legend_layout": "auto",
+        "yaxis": {
+          "scale": "linear",
+          "label": "milliseconds",
+          "include_zero": true,
+          "min": "auto",
+          "max": "auto"
+        }
+      },
+      "layout": {
+        "x": 0,
+        "y": 20,
+        "width": 6,
+        "height": 3
+      }
+    },
+    {
+      "id": 15,
+      "definition": {
+        "type": "timeseries",
+        "requests": [
+          {
+            "q": "p95:temporal_workflow_task_replay_latency{namespace:$namespace} by {namespace,workflow_type}",
+            "display_type": "line",
+            "style": {
+              "palette": "purple",
+              "line_type": "solid",
+              "line_width": "normal"
+            },
+            "metadata": [
+              {
+                "expression": "p95:temporal_workflow_task_replay_latency{namespace:$namespace} by {namespace,workflow_type}",
+                "alias_name": "namespace: {{namespace.name}}; workflow_type: {{workflow_type.name}}"
+              }
+            ]
+          }
+        ],
+        "title": "Workflow Task Replay Latency (p95)",
+        "title_size": "16",
+        "title_align": "left",
+        "show_legend": true,
+        "legend_columns": ["value", "avg", "sum", "min", "max"],
+        "legend_layout": "auto",
+        "yaxis": {
+          "scale": "linear",
+          "label": "milliseconds",
+          "include_zero": true,
+          "min": "auto",
+          "max": "auto"
+        }
+      },
+      "layout": {
+        "x": 6,
+        "y": 20,
+        "width": 6,
+        "height": 3
+      }
+    },
+    {
+      "id": 16,
+      "definition": {
+        "type": "timeseries",
+        "requests": [
+          {
+            "q": "sum:temporal_workflow_task_queue_poll_empty{namespace:$namespace} by {namespace,task_queue}.as_rate()",
+            "display_type": "line",
+            "style": {
+              "palette": "grey",
+              "line_type": "solid",
+              "line_width": "normal"
+            },
+            "metadata": [
+              {
+                "expression": "sum:temporal_workflow_task_queue_poll_empty{namespace:$namespace} by {namespace,task_queue}.as_rate()",
+                "alias_name": "namespace: {{namespace.name}}; task_queue: {{task_queue.name}}"
+              }
+            ]
+          }
+        ],
+        "title": "Workflow Task Empty Polls",
+        "title_size": "16",
+        "title_align": "left",
+        "show_legend": true,
+        "legend_columns": ["value", "avg", "sum", "min", "max"],
+        "legend_layout": "auto"
+      },
+      "layout": {
+        "x": 0,
+        "y": 23,
+        "width": 6,
+        "height": 3
+      }
+    },
+    {
+      "id": 17,
+      "definition": {
+        "type": "timeseries",
+        "requests": [
+          {
+            "q": "sum:temporal_activity_schedule_to_start_latency.count{namespace:$namespace} by {namespace}.as_rate()",
+            "display_type": "line",
+            "style": {
+              "palette": "dog_classic",
+              "line_type": "solid",
+              "line_width": "normal"
+            },
+            "metadata": [
+              {
+                "expression": "sum:temporal_activity_schedule_to_start_latency.count{namespace:$namespace} by {namespace}.as_rate()",
+                "alias_name": "namespace: {{namespace.name}}"
+              }
+            ]
+          }
+        ],
+        "title": "Activity Throughput",
+        "title_size": "16",
+        "title_align": "left",
+        "show_legend": true,
+        "legend_columns": ["value", "avg", "sum", "min", "max"],
+        "legend_layout": "auto"
+      },
+      "layout": {
+        "x": 6,
+        "y": 23,
+        "width": 6,
+        "height": 3
+      }
+    },
+    {
+      "id": 18,
+      "definition": {
+        "type": "timeseries",
+        "requests": [
+          {
+            "q": "sum:temporal_activity_execution_failed{namespace:$namespace} by {namespace,activity_type}.as_rate()",
+            "display_type": "line",
+            "style": {
+              "palette": "warm",
+              "line_type": "solid",
+              "line_width": "normal"
+            },
+            "metadata": [
+              {
+                "expression": "sum:temporal_activity_execution_failed{namespace:$namespace} by {namespace,activity_type}.as_rate()",
+                "alias_name": "namespace: {{namespace.name}}; activity_type: {{activity_type.name}}"
+              }
+            ]
+          }
+        ],
+        "title": "Activity Failed",
+        "title_size": "16",
+        "title_align": "left",
+        "show_legend": true,
+        "legend_columns": ["value", "avg", "sum", "min", "max"],
+        "legend_layout": "auto"
+      },
+      "layout": {
+        "x": 0,
+        "y": 26,
+        "width": 6,
+        "height": 3
+      }
+    },
+    {
+      "id": 19,
+      "definition": {
+        "type": "timeseries",
+        "requests": [
+          {
+            "q": "p95:temporal_activity_execution_latency{namespace:$namespace} by {namespace,activity_type}",
+            "display_type": "line",
+            "style": {
+              "palette": "purple",
+              "line_type": "solid",
+              "line_width": "normal"
+            },
+            "metadata": [
+              {
+                "expression": "p95:temporal_activity_execution_latency{namespace:$namespace} by {namespace,activity_type}",
+                "alias_name": "namespace: {{namespace.name}}; activity_type: {{activity_type.name}}"
+              }
+            ]
+          }
+        ],
+        "title": "Activity Execution Latencies (p95)",
+        "title_size": "16",
+        "title_align": "left",
+        "show_legend": true,
+        "legend_columns": ["value", "avg", "sum", "min", "max"],
+        "legend_layout": "auto",
+        "yaxis": {
+          "scale": "linear",
+          "label": "milliseconds",
+          "include_zero": true,
+          "min": "auto",
+          "max": "auto"
+        }
+      },
+      "layout": {
+        "x": 6,
+        "y": 26,
+        "width": 6,
+        "height": 3
+      }
+    },
+    {
+      "id": 20,
+      "definition": {
+        "type": "timeseries",
+        "requests": [
+          {
+            "q": "sum:temporal_activity_poll_no_task{namespace:$namespace} by {namespace,task_queue}.as_rate()",
+            "display_type": "line",
+            "style": {
+              "palette": "grey",
+              "line_type": "solid",
+              "line_width": "normal"
+            },
+            "metadata": [
+              {
+                "expression": "sum:temporal_activity_poll_no_task{namespace:$namespace} by {namespace,task_queue}.as_rate()",
+                "alias_name": "namespace: {{namespace.name}}; task_queue: {{task_queue.name}}"
+              }
+            ]
+          }
+        ],
+        "title": "Empty Activity Polls",
+        "title_size": "16",
+        "title_align": "left",
+        "show_legend": true,
+        "legend_columns": ["value", "avg", "sum", "min", "max"],
+        "legend_layout": "auto"
+      },
+      "layout": {
+        "x": 0,
+        "y": 29,
+        "width": 6,
+        "height": 3
+      }
+    },
+    {
+      "id": 21,
+      "definition": {
+        "type": "timeseries",
+        "requests": [
+          {
+            "q": "p95:temporal_activity_schedule_to_start_latency{namespace:$namespace} by {namespace,task_queue}",
+            "display_type": "line",
+            "style": {
+              "palette": "purple",
+              "line_type": "solid",
+              "line_width": "normal"
+            },
+            "metadata": [
+              {
+                "expression": "p95:temporal_activity_schedule_to_start_latency{namespace:$namespace} by {namespace,task_queue}",
+                "alias_name": "namespace: {{namespace.name}}; task_queue: {{task_queue.name}}"
+              }
+            ]
+          }
+        ],
+        "title": "Activity Schedule To Start (p95)",
+        "title_size": "16",
+        "title_align": "left",
+        "show_legend": true,
+        "legend_columns": ["value", "avg", "sum", "min", "max"],
+        "legend_layout": "auto",
+        "yaxis": {
+          "scale": "linear",
+          "label": "milliseconds",
+          "include_zero": true,
+          "min": "auto",
+          "max": "auto"
+        }
+      },
+      "layout": {
+        "x": 6,
+        "y": 29,
+        "width": 6,
+        "height": 3
+      }
+    },
+    {
+      "id": 22,
+      "definition": {
+        "type": "timeseries",
+        "requests": [
+          {
+            "q": "temporal_worker_task_slots_available{namespace:$namespace} by {namespace,worker_type}",
+            "display_type": "line",
+            "style": {
+              "palette": "dog_classic",
+              "line_type": "solid",
+              "line_width": "normal"
+            },
+            "metadata": [
+              {
+                "expression": "temporal_worker_task_slots_available{namespace:$namespace} by {namespace,worker_type}",
+                "alias_name": "namespace: {{namespace.name}}; worker_type: {{worker_type.name}}"
+              }
+            ]
+          }
+        ],
+        "title": "Slots Available",
+        "title_size": "16",
+        "title_align": "left",
+        "show_legend": true,
+        "legend_columns": ["value", "avg", "sum", "min", "max"],
+        "legend_layout": "auto"
+      },
+      "layout": {
+        "x": 0,
+        "y": 32,
+        "width": 6,
+        "height": 3
+      }
+    },
+    {
+      "id": 23,
+      "definition": {
+        "type": "timeseries",
+        "requests": [
+          {
+            "q": "temporal_worker_task_slots_used{namespace:$namespace} by {namespace,worker_type}",
+            "display_type": "line",
+            "style": {
+              "palette": "orange",
+              "line_type": "solid",
+              "line_width": "normal"
+            },
+            "metadata": [
+              {
+                "expression": "temporal_worker_task_slots_used{namespace:$namespace} by {namespace,worker_type}",
+                "alias_name": "namespace: {{namespace.name}}; worker_type: {{worker_type.name}}"
+              }
+            ]
+          }
+        ],
+        "title": "Slots Used",
+        "title_size": "16",
+        "title_align": "left",
+        "show_legend": true,
+        "legend_columns": ["value", "avg", "sum", "min", "max"],
+        "legend_layout": "auto"
+      },
+      "layout": {
+        "x": 6,
+        "y": 32,
+        "width": 6,
+        "height": 3
+      }
+    },
+    {
+      "id": 24,
+      "definition": {
+        "type": "timeseries",
+        "requests": [
+          {
+            "q": "temporal_sticky_cache_size{namespace:$namespace} by {namespace}",
+            "display_type": "line",
+            "style": {
+              "palette": "dog_classic",
+              "line_type": "solid",
+              "line_width": "normal"
+            },
+            "metadata": [
+              {
+                "expression": "temporal_sticky_cache_size{namespace:$namespace} by {namespace}",
+                "alias_name": "namespace: {{namespace.name}}"
+              }
+            ]
+          }
+        ],
+        "title": "Sticky Cache Size",
+        "title_size": "16",
+        "title_align": "left",
+        "show_legend": true,
+        "legend_columns": ["value", "avg", "sum", "min", "max"],
+        "legend_layout": "auto"
+      },
+      "layout": {
+        "x": 0,
+        "y": 35,
+        "width": 6,
+        "height": 3
+      }
+    },
+    {
+      "id": 25,
+      "definition": {
+        "type": "timeseries",
+        "requests": [
+          {
+            "q": "sum:temporal_sticky_cache_total_forced_eviction{namespace:$namespace} by {namespace}.as_rate()",
+            "display_type": "line",
+            "style": {
+              "palette": "warm",
+              "line_type": "solid",
+              "line_width": "normal"
+            },
+            "metadata": [
+              {
+                "expression": "sum:temporal_sticky_cache_total_forced_eviction{namespace:$namespace} by {namespace}.as_rate()",
+                "alias_name": "namespace: {{namespace.name}}"
+              }
+            ]
+          }
+        ],
+        "title": "Sticky Cache Forced Eviction",
+        "title_size": "16",
+        "title_align": "left",
+        "show_legend": true,
+        "legend_columns": ["value", "avg", "sum", "min", "max"],
+        "legend_layout": "auto"
+      },
+      "layout": {
+        "x": 6,
+        "y": 35,
+        "width": 6,
+        "height": 3
+      }
+    },
+    {
+      "id": 26,
+      "definition": {
+        "type": "timeseries",
+        "requests": [
+          {
+            "q": "sum:temporal_sticky_cache_hit{namespace:$namespace} by {namespace}.as_rate()",
+            "display_type": "line",
+            "style": {
+              "palette": "green",
+              "line_type": "solid",
+              "line_width": "normal"
+            },
+            "metadata": [
+              {
+                "expression": "sum:temporal_sticky_cache_hit{namespace:$namespace} by {namespace}.as_rate()",
+                "alias_name": "namespace: {{namespace.name}}"
+              }
+            ]
+          }
+        ],
+        "title": "Sticky Cache Hit",
+        "title_size": "16",
+        "title_align": "left",
+        "show_legend": true,
+        "legend_columns": ["value", "avg", "sum", "min", "max"],
+        "legend_layout": "auto"
+      },
+      "layout": {
+        "x": 0,
+        "y": 38,
+        "width": 6,
+        "height": 3
+      }
+    },
+    {
+      "id": 27,
+      "definition": {
+        "type": "timeseries",
+        "requests": [
+          {
+            "q": "sum:temporal_sticky_cache_miss{namespace:$namespace} by {namespace,task_queue}.as_rate()",
+            "display_type": "line",
+            "style": {
+              "palette": "orange",
+              "line_type": "solid",
+              "line_width": "normal"
+            },
+            "metadata": [
+              {
+                "expression": "sum:temporal_sticky_cache_miss{namespace:$namespace} by {namespace,task_queue}.as_rate()",
+                "alias_name": "namespace: {{namespace.name}}; task_queue: {{task_queue.name}}"
+              }
+            ]
+          }
+        ],
+        "title": "Sticky Cache Miss",
+        "title_size": "16",
+        "title_align": "left",
+        "show_legend": true,
+        "legend_columns": ["value", "avg", "sum", "min", "max"],
+        "legend_layout": "auto"
+      },
+      "layout": {
+        "x": 6,
+        "y": 38,
+        "width": 6,
+        "height": 3
+      }
+    }
+  ],
+  "layout_type": "ordered",
+  "is_read_only": false,
+  "notify_list": [],
+  "reflow_type": "fixed"
+}
