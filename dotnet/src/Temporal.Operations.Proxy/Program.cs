@@ -50,9 +50,8 @@ builder.Services.ConfigureHttpClientDefaults(http =>
     });
 });
 
-// Add configuration services
-builder.Services.Configure<TemporalApiConfiguration>(
-    builder.Configuration.GetSection("TemporalApi"));
+// Add unified configuration
+builder.Services.Configure<AppConfiguration>(builder.Configuration);
 builder.Services.AddSingleton<IValidateOptions<TemporalApiConfiguration>, TemporalApiConfigurationValidator>();
 
 // Enable configuration monitoring (reloads when appsettings.json changes)
@@ -114,15 +113,30 @@ builder.Services.AddSingleton<CosmosClient>(serviceProvider =>
 });
 
 builder.Services.AddSingleton<IDataService, DataService>();
-builder.Services.AddSingleton<ICodec<PayloadContext, byte[]>, CosmosPayloadCodec>();
+
+// Conditional codec registration based on encoding strategy
+builder.Services.AddSingleton<ICodec<PayloadContext, byte[]>>(serviceProvider =>
+{
+    var appConfig = serviceProvider.GetRequiredService<IOptions<AppConfiguration>>().Value;
+    return appConfig.Encoding.Strategy.ToLowerInvariant() switch
+    {
+        "cosmosdb" => serviceProvider.GetRequiredService<CosmosPayloadCodec>(),
+        "default" or _ => serviceProvider.GetRequiredService<CryptPayloadCodec>()
+    };
+});
+
+// Register both implementations
+builder.Services.AddSingleton<CosmosPayloadCodec>();
+builder.Services.AddSingleton<CryptPayloadCodec>();
 
 var app = builder.Build();
 // Validate configuration on startup
-var temporalConfig = app.Services.GetRequiredService<IOptions<TemporalApiConfiguration>>();
+var appConfig = app.Services.GetRequiredService<IOptions<AppConfiguration>>();
 try
 {
-    var config = temporalConfig.Value; // This will trigger validation
-    app.Logger.LogInformation("Configuration validated successfully");
+    var config = appConfig.Value; // This will trigger validation
+    app.Logger.LogInformation("Configuration validated successfully. Using encoding strategy: {Strategy}", 
+        config.Encoding.Strategy);
 }
 catch (OptionsValidationException ex)
 {
