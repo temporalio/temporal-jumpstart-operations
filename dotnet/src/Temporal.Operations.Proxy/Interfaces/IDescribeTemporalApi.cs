@@ -30,7 +30,7 @@ public interface IDescribeTemporalApi
     /// Diagnostic method to get statistics about loaded payload fields
     /// </summary>
     PayloadFieldStats GetStats();
-    
+
     /// <summary>
     /// Checks if a message type contains any payload fields that need transformation
     /// </summary>

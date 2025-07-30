@@ -7,9 +7,9 @@ public class TemporalApiConfiguration
 {
     [Required(ErrorMessage = "DescriptorFilePath is required")]
     public string DescriptorFilePath { get; init; } = string.Empty;
-    
+
     public bool EncodeSearchAttributes { get; init; } = false;
-    
+
     // Custom validation method
     public ValidationResult? Validate()
     {
@@ -17,17 +17,17 @@ public class TemporalApiConfiguration
         {
             return new ValidationResult("DescriptorFilePath cannot be empty");
         }
-        
+
         return ValidationResult.Success;
     }
-    
+
     public string GetResolvedDescriptorPath(string contentRootPath)
     {
         if (Path.IsPathRooted(DescriptorFilePath))
         {
             return DescriptorFilePath;
         }
-        
+
         return Path.Combine(contentRootPath, DescriptorFilePath);
     }
 }

@@ -3,7 +3,7 @@ using Temporal.Operations.Proxy.Interfaces;
 
 namespace Temporal.Operations.Proxy.Services;
 
-public class AesByteEncryptor: IEncrypt, IResolveEncryptionKey, IAddEncryptionKey
+public class AesByteEncryptor : IEncrypt, IResolveEncryptionKey, IAddEncryptionKey
 {
     private readonly IDictionary<string, byte[]> _keys = new Dictionary<string, byte[]>();
     private const int NonceSize = 12;
@@ -38,7 +38,7 @@ public class AesByteEncryptor: IEncrypt, IResolveEncryptionKey, IAddEncryptionKe
 
         using var aes = new AesGcm(key, TagSize);
         aes.Decrypt(
-            data.AsSpan(0, NonceSize), 
+            data.AsSpan(0, NonceSize),
             data.AsSpan(NonceSize, bytes.Length),
             data.AsSpan(NonceSize + bytes.Length, TagSize), bytes.AsSpan());
         return bytes;
@@ -48,8 +48,8 @@ public class AesByteEncryptor: IEncrypt, IResolveEncryptionKey, IAddEncryptionKe
     {
         if (!_keys.TryGetValue(keyId, out var key))
         {
-            throw new InvalidOperationException($"Key {keyId} not found");   
+            throw new InvalidOperationException($"Key {keyId} not found");
         }
-        return key;   
+        return key;
     }
 }

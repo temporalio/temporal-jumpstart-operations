@@ -21,23 +21,48 @@ public class CosmosPayloadCodec : ICodec<PayloadContext, byte[]>, ICodec<Payload
     public const string EncodingMetadataKey = "encoding";
     public const string EncodingMetadataValue = "claim/checked";
     private static readonly ByteString EncodingMetadataValueByteString = ByteString.CopyFromUtf8(EncodingMetadataValue);
-    
+
     public Temporalio.Api.Common.V1.Payload Encode(PayloadContext context, Temporalio.Api.Common.V1.Payload payload)
     {
-        
+        return EncodeAsync(context, payload).GetAwaiter().GetResult();
+    }
+
+    public Temporalio.Api.Common.V1.Payload Decode(PayloadContext context, Temporalio.Api.Common.V1.Payload payload)
+    {
+        return DecodeAsync(context, payload).GetAwaiter().GetResult();
+    }
+
+    public byte[] Encode(PayloadContext context, byte[] value)
+    {
+        var payload = Temporalio.Api.Common.V1.Payload.Parser.ParseFrom(value);
+
+        var encoded = Encode(context, payload);
+
+        return encoded.ToByteArray();
+    }
+
+    public byte[] Decode(PayloadContext context, byte[] value)
+    {
+        var payload = Temporalio.Api.Common.V1.Payload.Parser.ParseFrom(value);
+        var decoded = Decode(context, payload);
+        return decoded.ToByteArray();
+    }
+
+    public async Task<Temporalio.Api.Common.V1.Payload> EncodeAsync(PayloadContext context, Temporalio.Api.Common.V1.Payload payload)
+    {
         // Cosmos requires a unique id for each item
         var id = Guid.NewGuid().ToString();
         var value = payload.Data.ToByteArray();
         var cp = new CosmosPayload
         {
-            id=id, 
+            id = id,
             value = value,
             temporalNamespace = context.Namespace,
             ttl = 60 * 60 * 24 * 180 // 180 days TTL
         };
-        // TODO janky async/sync mix
-        _dataService.CreateItemAsync(cp,cp.temporalNamespace, CosmosContainerName).Wait();
-        
+
+        await _dataService.CreateItemAsync(cp, cp.temporalNamespace, CosmosContainerName);
+
         var enc = new Temporalio.Api.Common.V1.Payload();
         var encodingSwapped = false;
         enc.Metadata.Add(CosmosIdMetadataKey, ByteString.CopyFromUtf8(id));
@@ -59,20 +84,19 @@ public class CosmosPayloadCodec : ICodec<PayloadContext, byte[]>, ICodec<Payload
         {
             enc.Metadata[EncodingMetadataKey] = EncodingMetadataValueByteString;
         }
-        
+
         enc.Data = ByteString.CopyFromUtf8("who moved my cheese?");
         return enc;
     }
 
-    public Temporalio.Api.Common.V1.Payload Decode(PayloadContext context, Temporalio.Api.Common.V1.Payload payload)
+    public async Task<Temporalio.Api.Common.V1.Payload> DecodeAsync(PayloadContext context, Temporalio.Api.Common.V1.Payload payload)
     {
-        
         // Remove encryption metadata and restore original encoding
         if (!payload.Metadata[EncodingMetadataKey].Equals(EncodingMetadataValueByteString))
         {
             return payload;
         }
-        
+
         if (!payload.Metadata.TryGetValue(CosmosIdMetadataKey, out var idBytes))
         {
             throw new InvalidOperationException($"Missing {CosmosIdMetadataKey} metadata");
@@ -96,27 +120,25 @@ public class CosmosPayloadCodec : ICodec<PayloadContext, byte[]>, ICodec<Payload
                     break;
             }
         }
-        
+
         var id = idBytes.ToStringUtf8();
-        var cosmosPayload = _dataService.GetItemAsync<CosmosPayload>(id, context.Namespace, CosmosContainerName).Result;
+        var cosmosPayload = await _dataService.GetItemAsync<CosmosPayload>(id, context.Namespace, CosmosContainerName);
         dec.Data = ByteString.CopyFrom(cosmosPayload.value);
-        
+
         return dec;
     }
 
-    public byte[] Encode(PayloadContext context, byte[] value)
+    public async Task<byte[]> EncodeAsync(PayloadContext context, byte[] value)
     {
         var payload = Temporalio.Api.Common.V1.Payload.Parser.ParseFrom(value);
-        
-        var encoded = Encode(context, payload);
-
-        return encoded.ToByteArray();    
+        var encoded = await EncodeAsync(context, payload);
+        return encoded.ToByteArray();
     }
 
-    public byte[] Decode(PayloadContext context, byte[] value)
+    public async Task<byte[]> DecodeAsync(PayloadContext context, byte[] value)
     {
         var payload = Temporalio.Api.Common.V1.Payload.Parser.ParseFrom(value);
-        var decoded = Decode(context, payload);
+        var decoded = await DecodeAsync(context, payload);
         return decoded.ToByteArray();
     }
 }

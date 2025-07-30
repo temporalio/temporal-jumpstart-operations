@@ -15,7 +15,7 @@ public class PayloadFieldLookupTests : IDisposable, IClassFixture<TemporalApiDes
 {
     private readonly TemporalApiDescriptor _apiDescriptor;
     private readonly PayloadFieldLookup _payloadFieldLookup;
-    
+
     // Expected message types that should contain payload fields based on Temporal API
     private static readonly string[] ExpectedMessageTypesWithPayloads = new[]
     {
@@ -90,7 +90,7 @@ public class PayloadFieldLookupTests : IDisposable, IClassFixture<TemporalApiDes
         stats.MessageTypesWithPayloadsCount.Should().BeGreaterThan(0);
         stats.PayloadFields.Should().NotBeEmpty();
         stats.MessageTypesWithPayloads.Should().NotBeEmpty();
-        
+
         // Verify consistency
         stats.PayloadFieldCount.Should().Be(_payloadFieldLookup.PayloadFieldCount);
         stats.MessageTypesWithPayloadsCount.Should().Be(_payloadFieldLookup.MessageTypesWithPayloadsCount);
@@ -106,7 +106,7 @@ public class PayloadFieldLookupTests : IDisposable, IClassFixture<TemporalApiDes
         // Assert - Some expected types might not actually contain payload fields
         // So we'll just verify the method runs without error and log results
         result.Should().Be(result); // Tautology to ensure no exception
-        
+
         // For debugging - log which types don't have payload fields
         if (!result)
         {
@@ -146,10 +146,10 @@ public class PayloadFieldLookupTests : IDisposable, IClassFixture<TemporalApiDes
         {
             fieldDescriptor.Should().NotBeNull($"{messageTypeName}:{fieldNumber} should have a field descriptor");
             fieldDescriptor.FieldNumber.Should().Be(fieldNumber);
-            
+
             // Verify it's actually a Payload or Payloads type
             var messageTypeName2 = fieldDescriptor.MessageType?.FullName;
-            (messageTypeName2 == "temporal.api.common.v1.Payload" || 
+            (messageTypeName2 == "temporal.api.common.v1.Payload" ||
              messageTypeName2 == "temporal.api.common.v1.Payloads").Should().BeTrue(
                 $"Field should be Payload or Payloads type, but was {messageTypeName2}");
         }
@@ -191,7 +191,7 @@ public class PayloadFieldLookupTests : IDisposable, IClassFixture<TemporalApiDes
         {
             // The specific field might or might not be transformable - just ensure no exception
             result.Should().Be(result); // Tautology to ensure no exception
-            
+
             if (!result)
             {
                 Console.WriteLine($"Note: Expected field {messageTypeName}:{fieldNumber} to be transformable but it's not according to the actual descriptor");
@@ -217,20 +217,20 @@ public class PayloadFieldLookupTests : IDisposable, IClassFixture<TemporalApiDes
         {
             transformableFields.Should().NotBeEmpty($"{testMessageType} should have transformable fields");
             transformableFields.Should().OnlyContain(fd => fd != null, "all field descriptors should be valid");
-            
+
             // Get actual field numbers for debugging
             var actualFieldNumbers = transformableFields.Select(fd => fd.FieldNumber).ToHashSet();
             Console.WriteLine($"Actual transformable field numbers for {testMessageType}: {{{string.Join(", ", actualFieldNumbers.OrderBy(x => x))}}}");
-            
+
             // Log field details for debugging
             foreach (var field in transformableFields.Take(5))
             {
                 Console.WriteLine($"  Field {field.FieldNumber}: {field.Name} -> {field.MessageType?.FullName ?? field.FieldType.ToString()}");
             }
-            
+
             // Instead of asserting expected fields, just verify we have some valid transformable fields
             actualFieldNumbers.Should().OnlyContain(fn => fn > 0, "field numbers should be positive");
-            
+
             // Optional: Check if any expected fields are present (but don't fail if not)
             if (ExpectedDirectPayloadFields.TryGetValue(testMessageType, out var expectedFields))
             {
@@ -266,7 +266,7 @@ public class PayloadFieldLookupTests : IDisposable, IClassFixture<TemporalApiDes
             fieldNumbers.Should().NotBeEmpty($"{testMessageType} should have transformable field numbers");
             fieldNumbers.Should().OnlyHaveUniqueItems("field numbers should be unique");
             fieldNumbers.Should().OnlyContain(fn => fn > 0, "field numbers should be positive");
-            
+
             Console.WriteLine($"Transformable field numbers for {testMessageType}: {{{string.Join(", ", fieldNumbers.OrderBy(x => x))}}}");
         }
         else
@@ -283,7 +283,7 @@ public class PayloadFieldLookupTests : IDisposable, IClassFixture<TemporalApiDes
     {
         // Arrange - Get a known field number for this message type
         var fieldNumbers = _payloadFieldLookup.GetTransformableFieldNumbers(messageTypeName).ToList();
-        
+
         if (fieldNumbers.Any())
         {
             var fieldNumber = fieldNumbers.First();
@@ -295,7 +295,7 @@ public class PayloadFieldLookupTests : IDisposable, IClassFixture<TemporalApiDes
             fieldInfo.Should().NotBeNullOrWhiteSpace("field info should be provided");
             fieldInfo.Should().Contain(messageTypeName, "should contain message type name");
             fieldInfo.Should().Contain(fieldNumber.ToString(), "should contain field number");
-            
+
             Console.WriteLine($"Field info for {messageTypeName}:{fieldNumber}: {fieldInfo}");
         }
         else
@@ -370,7 +370,7 @@ public class PayloadFieldLookupTests : IDisposable, IClassFixture<TemporalApiDes
     {
         // Arrange - Find a field that has nested payload fields
         var allMessageTypes = _payloadFieldLookup.GetAllMessageTypesWithPayloads().ToList();
-        
+
         foreach (var messageType in allMessageTypes.Take(10)) // Check first 10 types
         {
             var fieldNumbers = _payloadFieldLookup.GetTransformableFieldNumbers(messageType.FullName).ToList();
@@ -378,7 +378,7 @@ public class PayloadFieldLookupTests : IDisposable, IClassFixture<TemporalApiDes
             {
                 // Act
                 var nestedTypeName = _payloadFieldLookup.GetNestedMessageTypeName(messageType.FullName, fieldNumber);
-                
+
                 // Assert - If it returns a type name, it should be valid
                 if (nestedTypeName != null)
                 {
@@ -401,17 +401,17 @@ public class PayloadFieldLookupTests : IDisposable, IClassFixture<TemporalApiDes
         allPayloadFields.Should().NotBeNull("payload fields collection should not be null");
         allNestedPayloadFields.Should().NotBeNull("nested payload fields collection should not be null");
         allMessageTypes.Should().NotBeNull("message types collection should not be null");
-        
+
         // If we have payload fields, they should be valid
         if (allPayloadFields.Any())
         {
             allPayloadFields.Should().OnlyContain(fd => fd != null, "all field descriptors should be valid");
-            
+
             // Verify field descriptors point to Payload types
             foreach (var field in allPayloadFields.Take(10)) // Test first 10 to keep test fast
             {
                 var typeName = field.MessageType?.FullName;
-                (typeName == "temporal.api.common.v1.Payload" || 
+                (typeName == "temporal.api.common.v1.Payload" ||
                  typeName == "temporal.api.common.v1.Payloads").Should().BeTrue(
                     $"Field {field.FullName} should reference Payload or Payloads, but references {typeName}");
             }
@@ -431,44 +431,44 @@ public class PayloadFieldLookupTests : IDisposable, IClassFixture<TemporalApiDes
     {
         // This test is designed to help understand what payload fields are actually discovered
         Console.WriteLine("=== DIAGNOSTIC: Discovered Payload Fields ===");
-        
+
         var allMessageTypes = _payloadFieldLookup.GetAllMessageTypesWithPayloads().ToList();
         var allPayloadFields = _payloadFieldLookup.GetAllPayloadFields().ToList();
         var allNestedPayloadFields = _payloadFieldLookup.GetAllNestedPayloadFields().ToList();
-        
+
         Console.WriteLine($"Total message types with payloads: {allMessageTypes.Count}");
         Console.WriteLine($"Total direct payload fields: {allPayloadFields.Count}");
         Console.WriteLine($"Total nested payload fields: {allNestedPayloadFields.Count}");
-        
+
         Console.WriteLine("\n=== Message Types with Payload Fields ===");
         foreach (var messageType in allMessageTypes.OrderBy(mt => mt.FullName))
         {
             Console.WriteLine($"- {messageType.FullName}");
-            
+
             var transformableFields = _payloadFieldLookup.GetTransformableFieldNumbers(messageType.FullName).ToList();
             if (transformableFields.Any())
             {
                 Console.WriteLine($"  Transformable fields: {{{string.Join(", ", transformableFields.OrderBy(x => x))}}}");
-                
+
                 // Show details for each field
                 foreach (var fieldNum in transformableFields.Take(5)) // Limit to 5 per message type
                 {
                     var isPayload = _payloadFieldLookup.IsPayloadField(messageType.FullName, fieldNum);
                     var hasNested = _payloadFieldLookup.HasNestedPayloadFields(messageType.FullName, fieldNum);
                     var fieldInfo = _payloadFieldLookup.GetFieldInfo(messageType.FullName, fieldNum);
-                    
+
                     Console.WriteLine($"    Field {fieldNum}: Direct={isPayload}, Nested={hasNested}");
                     Console.WriteLine($"      {fieldInfo}");
                 }
             }
         }
-        
+
         Console.WriteLine("\n=== Direct Payload Field Details ===");
         foreach (var field in allPayloadFields.Take(20)) // Show first 20
         {
             Console.WriteLine($"- {field.ContainingType.FullName}.{field.Name} (field #{field.FieldNumber}) -> {field.MessageType?.FullName}");
         }
-        
+
         // Check specific expected types
         Console.WriteLine("\n=== Expected vs Actual Check ===");
         foreach (var expectedType in ExpectedMessageTypesWithPayloads.Take(10))
@@ -476,14 +476,14 @@ public class PayloadFieldLookupTests : IDisposable, IClassFixture<TemporalApiDes
             var actualHasPayloads = _payloadFieldLookup.MessageTypeHasPayloadFields(expectedType);
             var status = actualHasPayloads ? "✓ HAS PAYLOADS" : "✗ NO PAYLOADS";
             Console.WriteLine($"{status}: {expectedType}");
-            
+
             if (actualHasPayloads)
             {
                 var fields = _payloadFieldLookup.GetTransformableFieldNumbers(expectedType).OrderBy(x => x).ToList();
                 Console.WriteLine($"  Fields: {{{string.Join(", ", fields)}}}");
             }
         }
-        
+
         // This test always passes - it's just for diagnostics
         true.Should().BeTrue("Diagnostic test always passes");
     }

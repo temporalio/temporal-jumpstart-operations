@@ -31,8 +31,8 @@ public class DataService : IDataService
     {
         var container = _cosmosClient.GetContainer(_databaseName, containerName);
         var response = await container.CreateItemAsync(
-            item, 
-            new PartitionKey(partitionKey), new ItemRequestOptions{}
+            item,
+            new PartitionKey(partitionKey), new ItemRequestOptions { }
             );
         return response.Resource;
     }
@@ -54,16 +54,16 @@ public class DataService : IDataService
     {
         var container = _cosmosClient.GetContainer(_databaseName, containerName);
         var queryDefinition = new QueryDefinition(query);
-        
+
         var results = new List<T>();
         using var feedIterator = container.GetItemQueryIterator<T>(queryDefinition);
-        
+
         while (feedIterator.HasMoreResults)
         {
             var response = await feedIterator.ReadNextAsync();
             results.AddRange(response.ToList());
         }
-        
+
         return results;
     }
 }

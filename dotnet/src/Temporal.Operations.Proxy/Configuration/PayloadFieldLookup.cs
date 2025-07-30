@@ -10,13 +10,13 @@ public class PayloadFieldLookup
 {
     // Key: "message.type.name:field_number", Value: FieldDescriptor for direct payload fields
     private readonly Dictionary<string, FieldDescriptor> _payloadFields = new();
-    
+
     // Key: "message.type.name:field_number", Value: FieldDescriptor for fields with nested payload fields
     private readonly Dictionary<string, FieldDescriptor> _nestedPayloadFields = new();
-    
+
     // Key: "message.type.name", Value: MessageDescriptor for message types that contain payload fields
     private readonly Dictionary<string, MessageDescriptor> _messageTypesWithPayloads = new();
-   
+
     /// <summary>
     /// Gets the FieldDescriptor for a direct payload field
     /// </summary>
@@ -79,7 +79,7 @@ public class PayloadFieldLookup
     /// </summary>
     public bool ShouldTransformField(string messageTypeName, int fieldNumber)
     {
-        return IsPayloadField(messageTypeName, fieldNumber) || 
+        return IsPayloadField(messageTypeName, fieldNumber) ||
                HasNestedPayloadFields(messageTypeName, fieldNumber);
     }
 
@@ -89,7 +89,7 @@ public class PayloadFieldLookup
     public IEnumerable<FieldDescriptor> GetTransformableFieldDescriptors(string messageTypeName)
     {
         var prefix = $"{messageTypeName}:";
-        
+
         // Direct payload fields
         foreach (var kvp in _payloadFields)
         {
@@ -98,7 +98,7 @@ public class PayloadFieldLookup
                 yield return kvp.Value;
             }
         }
-        
+
         // Fields with nested payload fields
         foreach (var kvp in _nestedPayloadFields)
         {

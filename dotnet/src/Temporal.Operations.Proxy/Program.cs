@@ -20,21 +20,21 @@ builder.WebHost.ConfigureKestrel(options =>
 {
     options.ListenLocalhost(5000, listenOptions =>
     {
-//         listenOptions.UseHttps(); // This will use the dev certificate
-// // If you're using HTTPS
-//         options.ConfigureHttpsDefaults(httpsOptions =>
-//         {
-//             httpsOptions.SslProtocols =  SslProtocols.Tls13;
-//             httpsOptions.ClientCertificateMode = ClientCertificateMode.NoCertificate;
-//         });
+        //         listenOptions.UseHttps(); // This will use the dev certificate
+        // // If you're using HTTPS
+        //         options.ConfigureHttpsDefaults(httpsOptions =>
+        //         {
+        //             httpsOptions.SslProtocols =  SslProtocols.Tls13;
+        //             httpsOptions.ClientCertificateMode = ClientCertificateMode.NoCertificate;
+        //         });
         listenOptions.Protocols = HttpProtocols.Http2;
     });
-    
+
     options.Limits.MinRequestBodyDataRate = null;
     options.Limits.MaxRequestBodySize = null;
     options.Limits.MinResponseDataRate = null;  // ← Add this for responses
     options.Limits.MaxResponseBufferSize = null; // ← Add this for responses
-    
+
     options.Limits.Http2.MaxStreamsPerConnection = 100;
     options.Limits.Http2.InitialConnectionWindowSize = 131072;
     options.Limits.Http2.InitialStreamWindowSize = 98304;
@@ -76,7 +76,7 @@ builder.Services.AddSingleton<IAddEncryptionKey>(p => p.GetRequiredService<AesBy
 
 // encryption direction
 // builder.Services.AddSingleton<ICodec<PayloadContext, byte[]>, CryptPayloadCodec>();
-builder.Services.AddSingleton<ICodec<MessageContext,byte[]>, MessageCodec>();
+builder.Services.AddSingleton<ICodec<MessageContext, byte[]>, MessageCodec>();
 
 // Register Temporal API descriptor services
 builder.Services.AddSingleton<IDescribeTemporalApi, TemporalApiDescriptor>();
@@ -103,12 +103,12 @@ builder.Services.AddSingleton<CosmosClient>(serviceProvider =>
     var configuration = serviceProvider.GetService<IConfiguration>();
     Debug.Assert(configuration != null, nameof(configuration) + " != null");
     var connectionString = configuration.GetConnectionString("CosmosDB");
-    
+
     // Alternative: Use account endpoint and key
     // var endpoint = configuration["CosmosDB:Endpoint"];
     // var key = configuration["CosmosDB:Key"];
     // return new CosmosClient(endpoint, key);
-    
+
     return new CosmosClient(connectionString);
 });
 
@@ -135,12 +135,12 @@ var appConfig = app.Services.GetRequiredService<IOptions<AppConfiguration>>();
 try
 {
     var config = appConfig.Value; // This will trigger validation
-    app.Logger.LogInformation("Configuration validated successfully. Using encoding strategy: {Strategy}", 
+    app.Logger.LogInformation("Configuration validated successfully. Using encoding strategy: {Strategy}",
         config.Encoding.Strategy);
 }
 catch (OptionsValidationException ex)
 {
-    app.Logger.LogError("Configuration validation failed: {Errors}", 
+    app.Logger.LogError("Configuration validation failed: {Errors}",
         string.Join(", ", ex.Failures));
     throw;
 }

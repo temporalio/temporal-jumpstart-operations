@@ -23,7 +23,7 @@ public class TemporalApiConfigurationValidator(IWebHostEnvironment environment)
             }
         }
 
-        return failures.Count > 0 
+        return failures.Count > 0
             ? ValidateOptionsResult.Fail(failures)
             : ValidateOptionsResult.Success;
     }

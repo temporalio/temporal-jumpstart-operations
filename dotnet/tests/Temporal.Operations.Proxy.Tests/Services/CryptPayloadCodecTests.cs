@@ -7,7 +7,7 @@ namespace Temporal.Operations.Proxy.Tests.Services;
 
 public class CryptPayloadCodecTests
 {
-    
+
     [Fact]
     public void Encode_Decode_GivenEncodingMeta_ShouldSwapOutMetadataAndDataBytes()
     {
@@ -27,9 +27,9 @@ public class CryptPayloadCodecTests
         payload.Metadata["encoding"] = ByteString.CopyFromUtf8("text/json");
         payload.Metadata["custom"] = ByteString.CopyFromUtf8("special");
         payload.Data = ByteString.CopyFromUtf8(json);
-        
+
         var dataBytes = payload.Data.ToByteArray();
-        
+
         var keys = new InMemoryTemporalNamespaceKeyIdResolver();
         keys.AddKeyId(@namespace, keyId);
 
@@ -46,9 +46,9 @@ public class CryptPayloadCodecTests
         }, payload);
         var encodedBytes = encoded.ToByteArray();
         Assert.NotEmpty(encodedBytes);
-        
+
         var actual = Temporalio.Api.Common.V1.Payload.Parser.ParseFrom(encodedBytes);
-        
+
         Assert.Equal(4, actual.Metadata.Count);
         Assert.Equal(CryptPayloadCodec.EncodingMetadataValue, actual.Metadata[CryptPayloadCodec.EncodingMetadataKey].ToStringUtf8());
         Assert.Equal("special", actual.Metadata["custom"].ToStringUtf8());
@@ -76,7 +76,7 @@ public class CryptPayloadCodecTests
         keys.AddKeyId(@namespace, keyId);
 
         var encryptor = new EchoEncryptor();
-        
+
         var sut = new CryptPayloadCodec(
             encryptor,
             keys);
@@ -86,6 +86,6 @@ public class CryptPayloadCodecTests
         var actual = Temporalio.Api.Common.V1.Payload.Parser.ParseFrom(decrypted);
         Assert.Equal(originalPayload.Metadata, actual.Metadata);
         Assert.Equal("{\"doo\":\"dah\"}", actual.Data.ToStringUtf8());
-            
+
     }
 }

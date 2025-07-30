@@ -25,6 +25,6 @@ public class EncryptionKeyLoader(
 
     public Task StopAsync(CancellationToken cancellationToken)
     {
-        return Task.CompletedTask;   
+        return Task.CompletedTask;
     }
 }

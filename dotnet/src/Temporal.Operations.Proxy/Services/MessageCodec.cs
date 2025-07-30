@@ -31,13 +31,13 @@ public class MessageCodec(
 
         using var output = new MemoryStream();
         var pos = 0;
-        
+
         while (pos < messageBytes.Length)
         {
             // Read tag
             var (tag, tagSize) = ReadVarint32(messageBytes, pos);
             pos += tagSize;
-            
+
             if (tag == 0) break;
 
             var fieldNumber = (int)(tag >> 3);
@@ -46,7 +46,7 @@ public class MessageCodec(
             // Write the tag to output
             WriteVarint32(output, tag);
 
-            if (wireType == WireFormat.WireType.LengthDelimited && 
+            if (wireType == WireFormat.WireType.LengthDelimited &&
                 _temporalApiDescriptor.PayloadFields.IsPayloadField(messageTypeName, fieldNumber))
             {
                 // This is a payload field - handle Payloads vs single Payload
@@ -71,7 +71,7 @@ public class MessageCodec(
                     WriteLengthDelimitedField(output, fieldData);
                 }
             }
-            else if (wireType == WireFormat.WireType.LengthDelimited && 
+            else if (wireType == WireFormat.WireType.LengthDelimited &&
                      _temporalApiDescriptor.PayloadFields.HasNestedPayloadFields(messageTypeName, fieldNumber))
             {
                 // This field contains nested messages with payload fields
@@ -102,6 +102,89 @@ public class MessageCodec(
     }
 
     /// <summary>
+    /// Transforms payload fields in a protobuf message asynchronously
+    /// </summary>
+    private async Task<byte[]> EncodeDecodeMessageAsync(byte[] messageBytes, string messageTypeName, CodecDirection direction, MessageContext context)
+    {
+        // Quick check - if this message type has no payload fields, return unchanged
+        if (!_temporalApiDescriptor.PayloadFields.MessageTypeHasPayloadFields(messageTypeName))
+        {
+            return messageBytes;
+        }
+
+        using var output = new MemoryStream();
+        var pos = 0;
+
+        while (pos < messageBytes.Length)
+        {
+            // Read tag
+            var (tag, tagSize) = ReadVarint32(messageBytes, pos);
+            pos += tagSize;
+
+            if (tag == 0) break;
+
+            var fieldNumber = (int)(tag >> 3);
+            var wireType = (WireFormat.WireType)(tag & 7);
+
+            // Write the tag to output
+            WriteVarint32(output, tag);
+
+            if (wireType == WireFormat.WireType.LengthDelimited &&
+                _temporalApiDescriptor.PayloadFields.IsPayloadField(messageTypeName, fieldNumber))
+            {
+                // This is a payload field - handle Payloads vs single Payload
+                var (fieldData, fieldSize) = ReadLengthDelimitedField(messageBytes, pos);
+                pos += fieldSize;
+
+                var fieldDescriptor = _temporalApiDescriptor.PayloadFields.GetPayloadField(messageTypeName, fieldNumber);
+                var fieldTypeName = fieldDescriptor?.MessageType?.FullName;
+
+                if (fieldTypeName == "temporal.api.common.v1.Payloads")
+                {
+                    var transformedData = await TransformPayloadsCollectionAsync(fieldData, direction, fieldDescriptor, context);
+                    WriteLengthDelimitedField(output, transformedData);
+                }
+                else if (fieldTypeName == "temporal.api.common.v1.Payload")
+                {
+                    var transformedData = await TransformSinglePayloadAsync(fieldData, messageTypeName, direction, fieldDescriptor, context);
+                    WriteLengthDelimitedField(output, transformedData);
+                }
+                else
+                {
+                    WriteLengthDelimitedField(output, fieldData);
+                }
+            }
+            else if (wireType == WireFormat.WireType.LengthDelimited &&
+                     _temporalApiDescriptor.PayloadFields.HasNestedPayloadFields(messageTypeName, fieldNumber))
+            {
+                // This field contains nested messages with payload fields
+                var (fieldData, fieldSize) = ReadLengthDelimitedField(messageBytes, pos);
+                pos += fieldSize;
+
+                var nestedMessageType = _temporalApiDescriptor.PayloadFields.GetNestedMessageTypeName(messageTypeName, fieldNumber);
+                if (nestedMessageType != null)
+                {
+                    // Recursively transform the nested message
+                    var transformedData = await EncodeDecodeMessageAsync(fieldData, nestedMessageType, direction, context);
+                    WriteLengthDelimitedField(output, transformedData);
+                }
+                else
+                {
+                    WriteLengthDelimitedField(output, fieldData);
+                }
+            }
+            else
+            {
+                // Regular field - copy as-is
+                CopyFieldData(messageBytes, pos, output, wireType, out var fieldSize);
+                pos += fieldSize;
+            }
+        }
+
+        return output.ToArray();
+    }
+
+    /// <summary>
     /// Transforms a Payloads collection by transforming each individual Payload at byte level
     /// More efficient - doesn't parse/serialize the entire Payloads collection
     /// </summary>
@@ -109,13 +192,13 @@ public class MessageCodec(
     {
         using var output = new MemoryStream();
         var pos = 0;
-        
+
         // Parse through the Payloads message byte by byte
         while (pos < payloadsBytes.Length)
         {
             var (tag, tagSize) = ReadVarint32(payloadsBytes, pos);
             pos += tagSize;
-            
+
             if (tag == 0) break;
 
             var fieldNumber = (int)(tag >> 3);
@@ -138,7 +221,7 @@ public class MessageCodec(
                     FieldPath = $"{fieldDescriptor?.Name ?? "payloads"}[]",
                 };
 
-                var transformedPayloadBytes = direction == CodecDirection.Encode 
+                var transformedPayloadBytes = direction == CodecDirection.Encode
                     ? _payloadCodec.Encode(payloadContext, payloadBytes)
                     : _payloadCodec.Decode(payloadContext, payloadBytes);
 
@@ -160,9 +243,9 @@ public class MessageCodec(
     /// <summary>
     /// Transforms a single Payload
     /// </summary>
-    private byte[] TransformSinglePayload(byte[] payloadBytes, 
+    private byte[] TransformSinglePayload(byte[] payloadBytes,
         string messageTypeName,
-        CodecDirection direction, 
+        CodecDirection direction,
         FieldDescriptor? fieldDescriptor, MessageContext context)
     {
 
@@ -173,9 +256,86 @@ public class MessageCodec(
             FieldPath = fieldDescriptor?.Name ?? "payload",
         };
 
-        return direction == CodecDirection.Encode 
+        return direction == CodecDirection.Encode
             ? _payloadCodec.Encode(payloadContext, payloadBytes)
             : _payloadCodec.Decode(payloadContext, payloadBytes);
+    }
+
+    /// <summary>
+    /// Transforms a Payloads collection by transforming each individual Payload at byte level asynchronously
+    /// More efficient - doesn't parse/serialize the entire Payloads collection
+    /// </summary>
+    private async Task<byte[]> TransformPayloadsCollectionAsync(byte[] payloadsBytes, CodecDirection direction, FieldDescriptor? fieldDescriptor, MessageContext context)
+    {
+        using var output = new MemoryStream();
+        var pos = 0;
+
+        // Parse through the Payloads message byte by byte
+        while (pos < payloadsBytes.Length)
+        {
+            var (tag, tagSize) = ReadVarint32(payloadsBytes, pos);
+            pos += tagSize;
+
+            if (tag == 0) break;
+
+            var fieldNumber = (int)(tag >> 3);
+            var wireType = (WireFormat.WireType)(tag & 7);
+
+            // Write the tag to output
+            WriteVarint32(output, tag);
+
+            if (wireType == WireFormat.WireType.LengthDelimited && fieldNumber == 1) // payloads field in Payloads message
+            {
+                // This is an individual Payload within the Payloads collection
+                var (payloadBytes, fieldSize) = ReadLengthDelimitedField(payloadsBytes, pos);
+                pos += fieldSize;
+
+                // Transform this individual Payload
+                var payloadContext = new PayloadContext
+                {
+                    Field = fieldDescriptor,
+                    Namespace = context.TemporalContext.Namespace,
+                    FieldPath = $"{fieldDescriptor?.Name ?? "payloads"}[]",
+                };
+
+                var transformedPayloadBytes = direction == CodecDirection.Encode
+                    ? await _payloadCodec.EncodeAsync(payloadContext, payloadBytes)
+                    : await _payloadCodec.DecodeAsync(payloadContext, payloadBytes);
+
+                // Write the transformed Payload back
+                WriteLengthDelimitedField(output, transformedPayloadBytes);
+            }
+            else
+            {
+                // Other fields in Payloads message - copy as-is
+                CopyFieldData(payloadsBytes, pos, output, wireType, out var fieldSize);
+                pos += fieldSize;
+            }
+        }
+
+        var result = output.ToArray();
+        return result;
+    }
+
+    /// <summary>
+    /// Transforms a single Payload asynchronously
+    /// </summary>
+    private async Task<byte[]> TransformSinglePayloadAsync(byte[] payloadBytes,
+        string messageTypeName,
+        CodecDirection direction,
+        FieldDescriptor? fieldDescriptor, MessageContext context)
+    {
+
+        var payloadContext = new PayloadContext
+        {
+            Field = fieldDescriptor,
+            Namespace = context.TemporalContext.Namespace,
+            FieldPath = fieldDescriptor?.Name ?? "payload",
+        };
+
+        return direction == CodecDirection.Encode
+            ? await _payloadCodec.EncodeAsync(payloadContext, payloadBytes)
+            : await _payloadCodec.DecodeAsync(payloadContext, payloadBytes);
     }
 
     /// <summary>
@@ -191,12 +351,12 @@ public class MessageCodec(
         {
             var b = data[pos + size];
             size++;
-            
+
             result |= (uint)(b & 0x7F) << shift;
-            
+
             if ((b & 0x80) == 0)
                 return (result, size);
-            
+
             shift += 7;
             if (shift >= 32)
                 throw new InvalidOperationException("Varint32 too long");
@@ -211,13 +371,13 @@ public class MessageCodec(
     private static (byte[] data, int totalSize) ReadLengthDelimitedField(byte[] messageBytes, int pos)
     {
         var (length, lengthSize) = ReadVarint32(messageBytes, pos);
-        
+
         if (pos + lengthSize + length > messageBytes.Length)
             throw new InvalidOperationException("Length-delimited field extends beyond message boundary");
 
         var data = new byte[length];
         Array.Copy(messageBytes, pos + lengthSize, data, 0, (int)length);
-        
+
         return (data, lengthSize + (int)length);
     }
 
@@ -272,12 +432,12 @@ public class MessageCodec(
         {
             var b = data[pos + size];
             size++;
-            
+
             result |= (ulong)(b & 0x7F) << shift;
-            
+
             if ((b & 0x80) == 0)
                 return (result, size);
-            
+
             shift += 7;
             if (shift >= 64)
                 throw new InvalidOperationException("Varint64 too long");
@@ -345,5 +505,15 @@ public class MessageCodec(
     public byte[] Decode(MessageContext context, byte[] value)
     {
         return EncodeDecodeMessage(value, context.MessageTypeName, CodecDirection.Decode, context);
+    }
+
+    public async Task<byte[]> EncodeAsync(MessageContext context, byte[] value)
+    {
+        return await EncodeDecodeMessageAsync(value, context.MessageTypeName, CodecDirection.Encode, context);
+    }
+
+    public async Task<byte[]> DecodeAsync(MessageContext context, byte[] value)
+    {
+        return await EncodeDecodeMessageAsync(value, context.MessageTypeName, CodecDirection.Decode, context);
     }
 }

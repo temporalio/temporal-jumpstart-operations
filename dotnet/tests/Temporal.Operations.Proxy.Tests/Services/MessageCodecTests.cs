@@ -16,7 +16,7 @@ using Temporalio.Api.WorkflowService.V1;
 
 namespace Temporal.Operations.Proxy.Tests.Services;
 
-public class MessageCodecTest: IClassFixture<TemporalApiDescriptorFixture>
+public class MessageCodecTest : IClassFixture<TemporalApiDescriptorFixture>
 {
     private readonly ICodec<PayloadContext, byte[]> _encoder;
     private readonly string _defaultNamespace;
@@ -26,31 +26,31 @@ public class MessageCodecTest: IClassFixture<TemporalApiDescriptorFixture>
     public MessageCodecTest(TemporalApiDescriptorFixture fixture)
     {
         var apiDescriptor = fixture.TemporalApiDescriptor;
-        
+
         _defaultNamespace = "default";
         _keyId = "TestKeyId";
         var keyResolver = new InMemoryTemporalNamespaceKeyIdResolver();
         keyResolver.AddKeyId(_defaultNamespace, _keyId);
         _encryptor = new AesByteEncryptor();
         _encryptor.AddKey(_keyId, new byte[32]);
-        
+
         _encoder = new CryptPayloadCodec(_encryptor, keyResolver);
-        
+
         _sut = new MessageCodec(apiDescriptor, _encoder, new Logger<MessageCodec>(new LoggerFactory()));
     }
 
     [Fact]
     public void GivenStartWorkflowExecution_ItShouldTransformRequest()
-    {   
+    {
         var payload = new Temporalio.Api.Common.V1.Payload
-        {   
+        {
             Metadata =
             {
                 ["encoding"] = ByteString.CopyFromUtf8("json/plain")
             },
             Data = ByteString.CopyFromUtf8("{\"message\": \"Hello World\"}")
         };
-       
+
         var request = new StartWorkflowExecutionRequest
         {
             Namespace = "default",
@@ -72,7 +72,7 @@ public class MessageCodecTest: IClassFixture<TemporalApiDescriptorFixture>
                 {
                     { "custom-field", new Payload
                     {
-                        Metadata = { { "encoding", ByteString.CopyFromUtf8("json/plain") } }, 
+                        Metadata = { { "encoding", ByteString.CopyFromUtf8("json/plain") } },
                         Data = ByteString.CopyFromUtf8("{\"message\": \"Hello SA\"}")
                     } }
                 }
@@ -80,12 +80,12 @@ public class MessageCodecTest: IClassFixture<TemporalApiDescriptorFixture>
         };
         request.WorkflowTaskTimeout = Duration.FromTimeSpan(TimeSpan.FromSeconds(30));
         var grpcRequest = GrpcUtils.CreateGrpcFrame(request.ToByteArray());
-        
-       
+
+
         using var stream = new MemoryStream();
         stream.Write(grpcRequest, 0, grpcRequest.Length);
         var ctx = GrpcUtils.CreateGrpcHttpContext(
-            "/temporal.api.workflowservice.v1.WorkflowService/StartWorkflowExecution", 
+            "/temporal.api.workflowservice.v1.WorkflowService/StartWorkflowExecution",
             grpcRequest);
         Assert.True(stream.Length > 0);
         stream.Position = 0; // Reset position before assigning to request body
@@ -103,23 +103,23 @@ public class MessageCodecTest: IClassFixture<TemporalApiDescriptorFixture>
             MessageTypeName = temporalContext.RequestMessageTypeName,
             TemporalContext = temporalContext,
         };
-        var transformed = _sut.Encode(messageContext,stream.ToArray()[5..]);
+        var transformed = _sut.Encode(messageContext, stream.ToArray()[5..]);
         using var actualStream = new MemoryStream(transformed);
         var actual = StartWorkflowExecutionRequest.Parser.ParseFrom(actualStream);
         var actualPayload = actual.Input.Payloads_[0];
-        Assert.Single(actual.Input.Payloads_);;
+        Assert.Single(actual.Input.Payloads_); ;
         Assert.True(actualPayload.Metadata.ContainsKey("encryption-key-id"));
         Assert.Equal(ByteString.CopyFromUtf8(CryptPayloadCodec.EncodingMetadataValue), actualPayload.Metadata["encoding"]);
         Assert.True(_encryptor.Decrypt(_keyId, actualPayload.Data.ToByteArray()).SequenceEqual(payload.Data), "failed to decrypt transformed .Data");
-        
-        Assert.False(actual.SearchAttributes.IndexedFields["custom-field"].Metadata.ContainsKey("encryption-key-id"));;
+
+        Assert.False(actual.SearchAttributes.IndexedFields["custom-field"].Metadata.ContainsKey("encryption-key-id")); ;
     }
-    
+
     [Fact]
     public async Task GivenUpdateWorkflowExecutionRequest()
-    {   
+    {
         var payload = new Temporalio.Api.Common.V1.Payload
-        {   
+        {
             Metadata =
             {
                 ["encoding"] = ByteString.CopyFromUtf8("json/plain")
@@ -136,7 +136,7 @@ public class MessageCodecTest: IClassFixture<TemporalApiDescriptorFixture>
         };
         var request = new UpdateWorkflowExecutionRequest
         {
-           
+
             FirstExecutionRunId = Guid.NewGuid().ToString(),
             Namespace = "default",
             Request = new Request
@@ -150,7 +150,7 @@ public class MessageCodecTest: IClassFixture<TemporalApiDescriptorFixture>
                     Name = "myupdate",
                     Header = new Header
                     {
-                        Fields = { {"custom", header} }
+                        Fields = { { "custom", header } }
                     },
                 }
             },
@@ -164,13 +164,13 @@ public class MessageCodecTest: IClassFixture<TemporalApiDescriptorFixture>
                 RunId = Guid.NewGuid().ToString(),
             }
         };
-        
+
         var grpcRequest = GrpcUtils.CreateGrpcFrame(request.ToByteArray());
-        
+
         using var stream = new MemoryStream();
         stream.Write(grpcRequest, 0, grpcRequest.Length);
         var ctx = GrpcUtils.CreateGrpcHttpContext(
-            "/temporal.api.workflowservice.v1.WorkflowService/UpdateWorkflowExecution", 
+            "/temporal.api.workflowservice.v1.WorkflowService/UpdateWorkflowExecution",
             grpcRequest);
         Assert.True(stream.Length > 0);
         stream.Position = 0; // Reset position before assigning to request body
@@ -188,35 +188,35 @@ public class MessageCodecTest: IClassFixture<TemporalApiDescriptorFixture>
             MessageTypeName = temporalContext.RequestMessageTypeName,
             TemporalContext = temporalContext,
         };
-        var transformed = _sut.Encode(messageContext,stream.ToArray()[5..]);
+        var transformed = _sut.Encode(messageContext, stream.ToArray()[5..]);
         using var actualStream = new MemoryStream(transformed);
         var actual = UpdateWorkflowExecutionRequest.Parser.ParseFrom(actualStream);
         var actualInputArgsPayload = actual.Request.Input.Args.Payloads_[0];
         var actualInputHeaderPayload = actual.Request.Input.Header.Fields["custom"];
-        Assert.Single(actual.Request.Input.Args.Payloads_);;
+        Assert.Single(actual.Request.Input.Args.Payloads_); ;
         Assert.True(actualInputArgsPayload.Metadata.ContainsKey("encryption-key-id"));
         Assert.Equal(ByteString.CopyFromUtf8(CryptPayloadCodec.EncodingMetadataValue), actualInputArgsPayload.Metadata["encoding"]);
         Assert.True(_encryptor.Decrypt(_keyId, actualInputArgsPayload.Data.ToByteArray()).SequenceEqual(payload.Data), "failed to decrypt transformed .Data");
-        
+
         Assert.True(actualInputHeaderPayload.Metadata.ContainsKey("encryption-key-id"));
         Assert.Equal(ByteString.CopyFromUtf8(CryptPayloadCodec.EncodingMetadataValue), actualInputHeaderPayload.Metadata["encoding"]);
         Assert.Equal(ByteString.CopyFromUtf8("json/sexy"), actualInputHeaderPayload.Metadata["encoding-original"]);
         Assert.True(_encryptor.Decrypt(_keyId, actualInputHeaderPayload.Data.ToByteArray()).SequenceEqual(header.Data), "failed to decrypt transformed .Data");
     }
-    
+
     [Fact]
     public async Task GivenPayloadsInExecutionHistoryResponse()
-    {   
-        
+    {
+
         // Create ENCRYPTED payloads (simulating what comes from Temporal server)
         var payloads = new Payloads();
         var originalPlainDataList = new List<byte[]>(); // Keep track of original plain data
-        
+
         for (int i = 0; i < 10; i++)
         {
             var plainData = Encoding.UTF8.GetBytes("{\"message\": \"Hello World-" + i + "\"}");
             originalPlainDataList.Add(plainData);
-            
+
             // Create ENCRYPTED payloads (as they would come from Temporal server)
             payloads.Payloads_.Add(new Temporalio.Api.Common.V1.Payload
             {
@@ -230,7 +230,7 @@ public class MessageCodecTest: IClassFixture<TemporalApiDescriptorFixture>
                 Data = ByteString.CopyFrom(_encryptor.Encrypt(_keyId, plainData)) // Encrypted data
             });
         }
-        
+
         var response = new GetWorkflowExecutionHistoryResponse
         {
             History = new History()
@@ -268,39 +268,39 @@ public class MessageCodecTest: IClassFixture<TemporalApiDescriptorFixture>
             }
         });
         response.History.Events.Add(new HistoryEvent()
+        {
+            EventId = 2,  // Required - sequential event ID
+            EventTime = Timestamp.FromDateTime(DateTime.UtcNow),  // Required
+            EventType = EventType.ActivityTaskScheduled,  // Required - must match the attributes
+            TaskId = 2,  // Required
+            Version = 1,  // Required
+            ActivityTaskScheduledEventAttributes = new ActivityTaskScheduledEventAttributes
             {
-                EventId = 2,  // Required - sequential event ID
-                EventTime = Timestamp.FromDateTime(DateTime.UtcNow),  // Required
-                EventType = EventType.ActivityTaskScheduled,  // Required - must match the attributes
-                TaskId = 2,  // Required
-                Version = 1,  // Required
-                ActivityTaskScheduledEventAttributes = new ActivityTaskScheduledEventAttributes
+                ActivityId = Guid.NewGuid().ToString(),
+                ActivityType = new ActivityType
                 {
-                    ActivityId = Guid.NewGuid().ToString(),
-                    ActivityType = new ActivityType
-                    {
-                        Name = "ProcessPaymentActivity"  // Use a meaningful name instead of GUID
-                    },
-                    Input = payloads,  // Your Payloads object
-                    TaskQueue = new TaskQueue
-                    {
-                        Kind = TaskQueueKind.Normal,
-                        Name = "payment-task-queue"  // Use a meaningful name
-                    },
-                    StartToCloseTimeout = Duration.FromTimeSpan(TimeSpan.FromSeconds(30)),
-                    
-                    // Optional but commonly used fields:
-                    ScheduleToCloseTimeout = Duration.FromTimeSpan(TimeSpan.FromMinutes(5)),
-                    ScheduleToStartTimeout = Duration.FromTimeSpan(TimeSpan.FromMinutes(1)),
-                    HeartbeatTimeout = Duration.FromTimeSpan(TimeSpan.FromSeconds(10)),
-                    
-                    // Optional Header with payload data (if needed):
-                    Header = new Header
-                    {
-                        Fields = 
-                        { 
-                            { 
-                                "correlation-id", 
+                    Name = "ProcessPaymentActivity"  // Use a meaningful name instead of GUID
+                },
+                Input = payloads,  // Your Payloads object
+                TaskQueue = new TaskQueue
+                {
+                    Kind = TaskQueueKind.Normal,
+                    Name = "payment-task-queue"  // Use a meaningful name
+                },
+                StartToCloseTimeout = Duration.FromTimeSpan(TimeSpan.FromSeconds(30)),
+
+                // Optional but commonly used fields:
+                ScheduleToCloseTimeout = Duration.FromTimeSpan(TimeSpan.FromMinutes(5)),
+                ScheduleToStartTimeout = Duration.FromTimeSpan(TimeSpan.FromMinutes(1)),
+                HeartbeatTimeout = Duration.FromTimeSpan(TimeSpan.FromSeconds(10)),
+
+                // Optional Header with payload data (if needed):
+                Header = new Header
+                {
+                    Fields =
+                        {
+                            {
+                                "correlation-id",
                                 new Temporalio.Api.Common.V1.Payload
                                 {
                                     Metadata = { { "encoding", ByteString.CopyFromUtf8("json/plain") } },
@@ -308,20 +308,20 @@ public class MessageCodecTest: IClassFixture<TemporalApiDescriptorFixture>
                                 }
                             }
                         }
-                    },
-                    
-                    // Optional retry policy:
-                    RetryPolicy = new RetryPolicy
-                    {
-                        MaximumAttempts = 3,
-                        InitialInterval = Duration.FromTimeSpan(TimeSpan.FromSeconds(1)),
-                        MaximumInterval = Duration.FromTimeSpan(TimeSpan.FromMinutes(1)),
-                        BackoffCoefficient = 2.0
-                    }
+                },
+
+                // Optional retry policy:
+                RetryPolicy = new RetryPolicy
+                {
+                    MaximumAttempts = 3,
+                    InitialInterval = Duration.FromTimeSpan(TimeSpan.FromSeconds(1)),
+                    MaximumInterval = Duration.FromTimeSpan(TimeSpan.FromMinutes(1)),
+                    BackoffCoefficient = 2.0
                 }
-            });
+            }
+        });
         var grpcResponse = GrpcUtils.CreateGrpcFrame(response.ToByteArray());
-        
+
         var temporalContext = new TemporalContext
         {
             Namespace = _defaultNamespace,
@@ -335,27 +335,27 @@ public class MessageCodecTest: IClassFixture<TemporalApiDescriptorFixture>
             TemporalContext = temporalContext,
         };
         // Transform the RESPONSE (this will DECRYPT the payloads)
-        var transformed = _sut.Decode(messageContext,grpcResponse[5..]);
-            
+        var transformed = _sut.Decode(messageContext, grpcResponse[5..]);
+
         // Parse the transformed result
         using var actualStream = new MemoryStream(transformed);
         var actual = GetWorkflowExecutionHistoryResponse.Parser.ParseFrom(actualStream);
         var actualInputArgsPayloads = actual.History.Events[0].WorkflowExecutionStartedEventAttributes.Input.Payloads_;
-        
+
         // Assertions
         Assert.Equal(10, actualInputArgsPayloads.Count);
-        
+
         for (int i = 0; i < actualInputArgsPayloads.Count; i++)
         {
             var decryptedPayload = actualInputArgsPayloads[i];
             var originalPlainData = originalPlainDataList[i];
-            
+
             // Check that encryption metadata was removed/changed
             Assert.Equal(ByteString.CopyFromUtf8("json/plain"), decryptedPayload.Metadata["encoding"]);
             Assert.False(decryptedPayload.Metadata.ContainsKey("encryption-key-id")); // Should be removed after decryption
-            
+
             // Check that the data was decrypted back to original plain text
-            Assert.True(decryptedPayload.Data.ToByteArray().SequenceEqual(originalPlainData), 
+            Assert.True(decryptedPayload.Data.ToByteArray().SequenceEqual(originalPlainData),
                 $"Payload {i} was not decrypted correctly");
         }
     }

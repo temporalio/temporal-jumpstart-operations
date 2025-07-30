@@ -7,7 +7,7 @@ namespace Temporal.Operations.Proxy.Tests.Services;
 
 public class TemporalApiDescriptorFixture : IDisposable
 {
-    
+
     public TemporalApiDescriptorFixture()
     {
         var configuration = new ConfigurationBuilder()
@@ -16,7 +16,7 @@ public class TemporalApiDescriptorFixture : IDisposable
             .Build();
         var config = new TemporalApiConfiguration();
         configuration.GetSection("TemporalApi").Bind(config);
-        
+
         TemporalApiDescriptor = new TemporalApiDescriptor(
             new Logger<TemporalApiDescriptor>(new LoggerFactory()), new OptionsWrapper<TemporalApiConfiguration>(config));
         TemporalApiDescriptor.LoadAsync().Wait();
@@ -25,7 +25,7 @@ public class TemporalApiDescriptorFixture : IDisposable
     public TemporalApiDescriptor TemporalApiDescriptor { get; private set; }
     public void Dispose()
     {
-        
+
     }
 
 }

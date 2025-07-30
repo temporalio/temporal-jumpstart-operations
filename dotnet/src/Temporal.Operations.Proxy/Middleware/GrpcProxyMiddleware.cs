@@ -19,8 +19,8 @@ namespace Temporal.Operations.Proxy.Middleware
 
         public GrpcProxyMiddleware(
             RequestDelegate next,
-            ILogger<GrpcProxyMiddleware> logger, 
-            ICodec<MessageContext, byte[]> messageCodec, 
+            ILogger<GrpcProxyMiddleware> logger,
+            ICodec<MessageContext, byte[]> messageCodec,
             IDescribeTemporalApi temporalApi)
         {
             _next = next;
@@ -72,7 +72,7 @@ namespace Temporal.Operations.Proxy.Middleware
                 _logger.LogWarning($"Received gRPC call without {TemporalNamespaceHeaderKey} header: {context.Request.Path}.");
                 return null;
             }
-            
+
             var serviceMethod = _temporalApi.GetServiceMethodInfo(context.Request.Path.Value);
             if (serviceMethod == null)
             {
@@ -88,7 +88,7 @@ namespace Temporal.Operations.Proxy.Middleware
                 ResponseMessageTypeName = serviceMethod.ResponseType,
             };
         }
-    
+
         private async Task HandleGrpcCall(HttpContext context)
         {
             try
@@ -102,7 +102,7 @@ namespace Temporal.Operations.Proxy.Middleware
                 }
 
                 _logger.LogDebug("Processing Temporal gRPC call for path: {Path}", temporalContext.Path);
-                
+
                 if (_temporalApi.MessageRequiresEncoding(temporalContext.RequestMessageTypeName))
                 {
                     await TransformRequestBody(context, temporalContext);
@@ -117,7 +117,7 @@ namespace Temporal.Operations.Proxy.Middleware
                 }
                 // Store original response body stream
                 var originalResponseBodyStream = context.Response.Body;
-                
+
                 using var responseBodyStream = new MemoryStream();
                 context.Response.Body = responseBodyStream;
 
@@ -155,7 +155,7 @@ namespace Temporal.Operations.Proxy.Middleware
                     requestBodyBytes.Length);
 
                 // Encode the request (your field-specific logic)
-                var transformedBytes = _messageCodec.Encode(
+                var transformedBytes = await _messageCodec.EncodeAsync(
                     new MessageContext
                     {
                         MessageTypeName = temporalContext.RequestMessageTypeName,
@@ -164,7 +164,7 @@ namespace Temporal.Operations.Proxy.Middleware
                     requestBodyBytes[5..]);
 
                 // Create a new stream with the transformed data
-                var transformedStream = new MemoryStream(GrpcUtils.CreateGrpcFrame( transformedBytes));
+                var transformedStream = new MemoryStream(GrpcUtils.CreateGrpcFrame(transformedBytes));
 
                 // Replace the request body stream
                 context.Request.Body = transformedStream;
@@ -178,12 +178,12 @@ namespace Temporal.Operations.Proxy.Middleware
                 _logger.LogError(ex, "Failed to transform request body");
                 throw;
             }
-            
+
         }
         private async Task TransformResponseBody(
-            HttpContext context, 
+            HttpContext context,
             TemporalContext temporalContext,
-            Stream originalResponseStream, 
+            Stream originalResponseStream,
             MemoryStream capturedResponseStream)
         {
             try
@@ -198,7 +198,7 @@ namespace Temporal.Operations.Proxy.Middleware
                 }
 
                 // Decode the response
-                var transformedBytes = _messageCodec.Decode(
+                var transformedBytes = await _messageCodec.DecodeAsync(
                     new MessageContext
                     {
                         MessageTypeName = temporalContext.ResponseMessageTypeName,
@@ -207,7 +207,7 @@ namespace Temporal.Operations.Proxy.Middleware
                     responseBodyBytes[5..]);
                 // Write transformed response to the original stream
                 var grpcResponseBytes = GrpcUtils.CreateGrpcFrame(transformedBytes);
-                context.Response.ContentLength = grpcResponseBytes.Length;;
+                context.Response.ContentLength = grpcResponseBytes.Length; ;
                 await originalResponseStream.WriteAsync(grpcResponseBytes);
 
                 _logger.LogDebug("Response body transformed: {OriginalSize} -> {TransformedSize} bytes",
@@ -216,7 +216,7 @@ namespace Temporal.Operations.Proxy.Middleware
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to transform response body");
-                
+
                 // On error, pass through the original response
                 capturedResponseStream.Position = 0;
                 await capturedResponseStream.CopyToAsync(originalResponseStream);
@@ -228,7 +228,7 @@ namespace Temporal.Operations.Proxy.Middleware
             }
         }
 
-        
+
         private static async Task<byte[]> ReadAllBytesAsync(Stream stream)
         {
             using var memoryStream = new MemoryStream();

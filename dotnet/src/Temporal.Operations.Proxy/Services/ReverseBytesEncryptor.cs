@@ -11,6 +11,6 @@ public class ReverseBytesEncryptor : IEncrypt
 
     public byte[] Decrypt(string keyId, byte[] data)
     {
-        return data.Reverse().ToArray();   
+        return data.Reverse().ToArray();
     }
 }
