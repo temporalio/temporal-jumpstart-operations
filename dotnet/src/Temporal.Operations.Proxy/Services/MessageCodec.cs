@@ -19,14 +19,6 @@ public class MessageCodec(
     private readonly ILogger<MessageCodec> _logger = logger;
 
     /// <summary>
-    /// Transforms payload fields in a protobuf message
-    /// </summary>
-    private byte[] EncodeDecodeMessage(byte[] messageBytes, string messageTypeName, CodecDirection direction, MessageContext context)
-    {
-        return EncodeDecodeMessageAsync(messageBytes, messageTypeName, direction, context).GetAwaiter().GetResult();
-    }
-
-    /// <summary>
     /// Transforms payload fields in a protobuf message asynchronously
     /// </summary>
     private async Task<byte[]> EncodeDecodeMessageAsync(byte[] messageBytes, string messageTypeName, CodecDirection direction, MessageContext context)
@@ -343,16 +335,6 @@ public class MessageCodec(
     public IEnumerable<FieldDescriptor> GetTransformableFieldDescriptors(string messageTypeName)
     {
         return _temporalApiDescriptor.PayloadFields.GetTransformableFieldDescriptors(messageTypeName);
-    }
-
-    public byte[] Encode(MessageContext context, byte[] value)
-    {
-        return EncodeDecodeMessage(value, context.MessageTypeName, CodecDirection.Encode, context);
-    }
-
-    public byte[] Decode(MessageContext context, byte[] value)
-    {
-        return EncodeDecodeMessage(value, context.MessageTypeName, CodecDirection.Decode, context);
     }
 
     public async Task<byte[]> EncodeAsync(MessageContext context, byte[] value)

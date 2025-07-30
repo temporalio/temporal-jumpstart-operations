@@ -17,7 +17,8 @@ public class CryptPayloadCodec(IEncrypt byteEncryption, IResolveKeyId keyIdResol
     public const string EncodingMetadataValue = "binary/encrypted";
     private static readonly ByteString EncodingMetadataValueByteString = ByteString.CopyFromUtf8(EncodingMetadataValue);
 
-    public Temporalio.Api.Common.V1.Payload Encode(PayloadContext context, Temporalio.Api.Common.V1.Payload payload)
+
+    public Task<Temporalio.Api.Common.V1.Payload> EncodeAsync(PayloadContext context, Temporalio.Api.Common.V1.Payload payload)
     {
         var keyId = keyIdResolver.ResolveKeyId(context.Namespace);
 
@@ -44,16 +45,15 @@ public class CryptPayloadCodec(IEncrypt byteEncryption, IResolveKeyId keyIdResol
         }
 
         enc.Data = ByteString.CopyFrom(byteEncryption.Encrypt(keyId, payload.Data.ToByteArray()));
-        return enc;
+        return Task.FromResult(enc);
     }
 
-    public Temporalio.Api.Common.V1.Payload Decode(PayloadContext context, Temporalio.Api.Common.V1.Payload payload)
+    public Task<Temporalio.Api.Common.V1.Payload> DecodeAsync(PayloadContext context, Temporalio.Api.Common.V1.Payload payload)
     {
-
         // Remove encryption metadata and restore original encoding
         if (!payload.Metadata[EncodingMetadataKey].Equals(EncodingMetadataValueByteString))
         {
-            return payload;
+            return Task.FromResult(payload);
         }
 
         if (!payload.Metadata.TryGetValue(EncryptionKeyMetadataKey, out var keyIdBytes))
@@ -82,42 +82,20 @@ public class CryptPayloadCodec(IEncrypt byteEncryption, IResolveKeyId keyIdResol
         var keyId = keyIdBytes.ToStringUtf8();
         dec.Data = ByteString.CopyFrom(byteEncryption.Decrypt(keyId, payload.Data.ToByteArray()));
 
-        return dec;
+        return Task.FromResult(dec);
     }
 
-    public byte[] Encode(PayloadContext context, byte[] value)
+    public async Task<byte[]> EncodeAsync(PayloadContext context, byte[] value)
     {
         var payload = Temporalio.Api.Common.V1.Payload.Parser.ParseFrom(value);
-
-        var encoded = Encode(context, payload);
-
+        var encoded = await EncodeAsync(context, payload);
         return encoded.ToByteArray();
     }
 
-    public byte[] Decode(PayloadContext context, byte[] value)
+    public async Task<byte[]> DecodeAsync(PayloadContext context, byte[] value)
     {
         var payload = Temporalio.Api.Common.V1.Payload.Parser.ParseFrom(value);
-        var decoded = Decode(context, payload);
+        var decoded = await DecodeAsync(context, payload);
         return decoded.ToByteArray();
-    }
-
-    public Task<Temporalio.Api.Common.V1.Payload> EncodeAsync(PayloadContext context, Temporalio.Api.Common.V1.Payload payload)
-    {
-        return Task.FromResult(Encode(context, payload));
-    }
-
-    public Task<Temporalio.Api.Common.V1.Payload> DecodeAsync(PayloadContext context, Temporalio.Api.Common.V1.Payload payload)
-    {
-        return Task.FromResult(Decode(context, payload));
-    }
-
-    public Task<byte[]> EncodeAsync(PayloadContext context, byte[] value)
-    {
-        return Task.FromResult(Encode(context, value));
-    }
-
-    public Task<byte[]> DecodeAsync(PayloadContext context, byte[] value)
-    {
-        return Task.FromResult(Decode(context, value));
     }
 }

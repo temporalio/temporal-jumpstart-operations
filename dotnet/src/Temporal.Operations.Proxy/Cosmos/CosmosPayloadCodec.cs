@@ -22,31 +22,6 @@ public class CosmosPayloadCodec : ICodec<PayloadContext, byte[]>, ICodec<Payload
     public const string EncodingMetadataValue = "claim/checked";
     private static readonly ByteString EncodingMetadataValueByteString = ByteString.CopyFromUtf8(EncodingMetadataValue);
 
-    public Temporalio.Api.Common.V1.Payload Encode(PayloadContext context, Temporalio.Api.Common.V1.Payload payload)
-    {
-        return EncodeAsync(context, payload).GetAwaiter().GetResult();
-    }
-
-    public Temporalio.Api.Common.V1.Payload Decode(PayloadContext context, Temporalio.Api.Common.V1.Payload payload)
-    {
-        return DecodeAsync(context, payload).GetAwaiter().GetResult();
-    }
-
-    public byte[] Encode(PayloadContext context, byte[] value)
-    {
-        var payload = Temporalio.Api.Common.V1.Payload.Parser.ParseFrom(value);
-
-        var encoded = Encode(context, payload);
-
-        return encoded.ToByteArray();
-    }
-
-    public byte[] Decode(PayloadContext context, byte[] value)
-    {
-        var payload = Temporalio.Api.Common.V1.Payload.Parser.ParseFrom(value);
-        var decoded = Decode(context, payload);
-        return decoded.ToByteArray();
-    }
 
     public async Task<Temporalio.Api.Common.V1.Payload> EncodeAsync(PayloadContext context, Temporalio.Api.Common.V1.Payload payload)
     {

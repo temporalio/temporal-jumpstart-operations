@@ -40,7 +40,7 @@ public class MessageCodecTest : IClassFixture<TemporalApiDescriptorFixture>
     }
 
     [Fact]
-    public void GivenStartWorkflowExecution_ItShouldTransformRequest()
+    public async Task GivenStartWorkflowExecution_ItShouldTransformRequest()
     {
         var payload = new Temporalio.Api.Common.V1.Payload
         {
@@ -103,7 +103,7 @@ public class MessageCodecTest : IClassFixture<TemporalApiDescriptorFixture>
             MessageTypeName = temporalContext.RequestMessageTypeName,
             TemporalContext = temporalContext,
         };
-        var transformed = _sut.Encode(messageContext, stream.ToArray()[5..]);
+        var transformed = await _sut.EncodeAsync(messageContext, stream.ToArray()[5..]);
         using var actualStream = new MemoryStream(transformed);
         var actual = StartWorkflowExecutionRequest.Parser.ParseFrom(actualStream);
         var actualPayload = actual.Input.Payloads_[0];
@@ -188,7 +188,7 @@ public class MessageCodecTest : IClassFixture<TemporalApiDescriptorFixture>
             MessageTypeName = temporalContext.RequestMessageTypeName,
             TemporalContext = temporalContext,
         };
-        var transformed = _sut.Encode(messageContext, stream.ToArray()[5..]);
+        var transformed = await _sut.EncodeAsync(messageContext, stream.ToArray()[5..]);
         using var actualStream = new MemoryStream(transformed);
         var actual = UpdateWorkflowExecutionRequest.Parser.ParseFrom(actualStream);
         var actualInputArgsPayload = actual.Request.Input.Args.Payloads_[0];
@@ -335,7 +335,7 @@ public class MessageCodecTest : IClassFixture<TemporalApiDescriptorFixture>
             TemporalContext = temporalContext,
         };
         // Transform the RESPONSE (this will DECRYPT the payloads)
-        var transformed = _sut.Decode(messageContext, grpcResponse[5..]);
+        var transformed = await _sut.DecodeAsync(messageContext, grpcResponse[5..]);
 
         // Parse the transformed result
         using var actualStream = new MemoryStream(transformed);

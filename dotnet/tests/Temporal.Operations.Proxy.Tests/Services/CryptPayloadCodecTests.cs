@@ -9,7 +9,7 @@ public class CryptPayloadCodecTests
 {
 
     [Fact]
-    public void Encode_Decode_GivenEncodingMeta_ShouldSwapOutMetadataAndDataBytes()
+    public async Task Encode_Decode_GivenEncodingMeta_ShouldSwapOutMetadataAndDataBytes()
     {
         string keyId = Guid.NewGuid().ToString();
         string @namespace = Guid.NewGuid().ToString();
@@ -38,7 +38,7 @@ public class CryptPayloadCodecTests
             encryptor,
             keys);
 
-        var encoded = sut.Encode(new PayloadContext
+        var encoded = await sut.EncodeAsync(new PayloadContext
         {
             Namespace = @namespace,
             Field = null,
@@ -55,7 +55,7 @@ public class CryptPayloadCodecTests
         Assert.Equal("text/json", actual.Metadata[CryptPayloadCodec.EncodingMetadataOriginalKey].ToStringUtf8());
     }
     [Fact]
-    public void SimplePayload_RoundTrip_ShouldWork()
+    public async Task SimplePayload_RoundTrip_ShouldWork()
     {
         string keyId = Guid.NewGuid().ToString();
         string @namespace = Guid.NewGuid().ToString();
@@ -81,8 +81,8 @@ public class CryptPayloadCodecTests
             encryptor,
             keys);
         // Encrypt and decrypt
-        var encrypted = sut.Encode(context, originalPayloadBytes);
-        var decrypted = sut.Decode(context, encrypted);
+        var encrypted = await sut.EncodeAsync(context, originalPayloadBytes);
+        var decrypted = await sut.DecodeAsync(context, encrypted);
         var actual = Temporalio.Api.Common.V1.Payload.Parser.ParseFrom(decrypted);
         Assert.Equal(originalPayload.Metadata, actual.Metadata);
         Assert.Equal("{\"doo\":\"dah\"}", actual.Data.ToStringUtf8());
