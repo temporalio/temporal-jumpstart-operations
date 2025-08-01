@@ -5,7 +5,8 @@ using Temporal.Operations.Proxy.Models;
 
 namespace Temporal.Operations.Proxy.Cosmos;
 
-public class CosmosPayloadCodec : ICodec<PayloadContext, byte[]>, ICodec<PayloadContext, Temporalio.Api.Common.V1.Payload>
+public class CosmosPayloadCodec : ICodec<PayloadContext, byte[]>, 
+    ICodec<PayloadContext, Temporalio.Api.Common.V1.Payload>
 {
     private IDataService _dataService;
 

@@ -74,9 +74,28 @@ builder.Services.AddSingleton<AesByteEncryptor>(_ => new AesByteEncryptor());
 builder.Services.AddSingleton<IEncrypt>(p => p.GetRequiredService<AesByteEncryptor>());
 builder.Services.AddSingleton<IAddEncryptionKey>(p => p.GetRequiredService<AesByteEncryptor>());
 
-// encryption direction
-// builder.Services.AddSingleton<ICodec<PayloadContext, byte[]>, CryptPayloadCodec>();
-builder.Services.AddSingleton<ICodec<MessageContext, byte[]>, MessageCodec>();
+// Request-scoped codec registrations (for lifecycle hooks)
+// Register the base MessageCodec as scoped so each request gets its own instance
+builder.Services.AddScoped<MessageCodec>();
+
+// Register the request-scoped wrapper that provides lifecycle hooks
+builder.Services.AddScoped<ICodec<MessageContext, byte[]>>(serviceProvider =>
+{
+    var messageCodec = serviceProvider.GetRequiredService<MessageCodec>();
+    var requestHandlers = serviceProvider.GetServices<IHandleRequest>();
+    var responseHandlers = serviceProvider.GetServices<IHandleResponse>();
+    return new RequestScopedMessageCodec(messageCodec, requestHandlers, responseHandlers);
+});
+
+// Register example lifecycle handlers (these can be replaced with custom implementations)
+builder.Services.AddScoped<IHandleRequest, BufferingRequestHandler>();
+builder.Services.AddScoped<IHandleResponse, BufferingResponseHandler>();
+
+// Also register the main codec as lifecycle interfaces for dependency injection
+builder.Services.AddScoped<IHandleRequest>(serviceProvider => 
+    (RequestScopedMessageCodec)serviceProvider.GetRequiredService<ICodec<MessageContext, byte[]>>());
+builder.Services.AddScoped<IHandleResponse>(serviceProvider => 
+    (RequestScopedMessageCodec)serviceProvider.GetRequiredService<ICodec<MessageContext, byte[]>>());
 
 // Register Temporal API descriptor services
 builder.Services.AddSingleton<IDescribeTemporalApi, TemporalApiDescriptor>();
@@ -114,8 +133,9 @@ builder.Services.AddSingleton<CosmosClient>(serviceProvider =>
 
 builder.Services.AddSingleton<IDataService, DataService>();
 
+// Payload codec registrations - keep as scoped for request-level state
 // Conditional codec registration based on encoding strategy
-builder.Services.AddSingleton<ICodec<PayloadContext, byte[]>>(serviceProvider =>
+builder.Services.AddScoped<ICodec<PayloadContext, byte[]>>(serviceProvider =>
 {
     var appConfig = serviceProvider.GetRequiredService<IOptions<AppConfiguration>>().Value;
     return appConfig.Encoding.Strategy.ToLowerInvariant() switch
@@ -125,9 +145,9 @@ builder.Services.AddSingleton<ICodec<PayloadContext, byte[]>>(serviceProvider =>
     };
 });
 
-// Register both implementations
-builder.Services.AddSingleton<CosmosPayloadCodec>();
-builder.Services.AddSingleton<CryptPayloadCodec>();
+// Register both implementations as scoped
+builder.Services.AddScoped<CosmosPayloadCodec>();
+builder.Services.AddScoped<CryptPayloadCodec>();
 
 var app = builder.Build();
 // Validate configuration on startup

@@ -13,6 +13,8 @@ namespace Temporal.Operations.Proxy.Middleware
     {
         private readonly RequestDelegate _next;
         private readonly ICodec<MessageContext, byte[]> _messageCodec;
+        private readonly IHandleRequest _requestHandler;
+        private readonly IHandleResponse _responseHandler;
         private readonly IDescribeTemporalApi _temporalApi;
         private readonly ILogger<GrpcProxyMiddleware> _logger;
         private const string TemporalNamespaceHeaderKey = "temporal-namespace";
@@ -21,12 +23,16 @@ namespace Temporal.Operations.Proxy.Middleware
             RequestDelegate next,
             ILogger<GrpcProxyMiddleware> logger,
             ICodec<MessageContext, byte[]> messageCodec,
-            IDescribeTemporalApi temporalApi)
+            IDescribeTemporalApi temporalApi,
+            IHandleRequest requestHandler,
+            IHandleResponse responseHandler)
         {
             _next = next;
             _logger = logger;
             _messageCodec = messageCodec;
             _temporalApi = temporalApi;
+            _requestHandler = requestHandler;
+            _responseHandler = responseHandler;
         }
 
         public async Task InvokeAsync(HttpContext context)
@@ -72,7 +78,7 @@ namespace Temporal.Operations.Proxy.Middleware
                 _logger.LogWarning($"Received gRPC call without {TemporalNamespaceHeaderKey} header: {context.Request.Path}.");
                 return null;
             }
-
+        
             var serviceMethod = _temporalApi.GetServiceMethodInfo(context.Request.Path.Value);
             if (serviceMethod == null)
             {
@@ -102,31 +108,16 @@ namespace Temporal.Operations.Proxy.Middleware
                 }
 
                 _logger.LogDebug("Processing Temporal gRPC call for path: {Path}", temporalContext.Path);
-
-                if (_temporalApi.MessageRequiresEncoding(temporalContext.RequestMessageTypeName))
+                await _requestHandler.TryHandleAsync(context, temporalContext);
+                using var responseBodyStream = new MemoryStream();
+                context.Response.Body = responseBodyStream;
+                // Continue to downstream server
+                await _next(context);
+                if (!await _responseHandler.TryHandleAsync(context, temporalContext))
                 {
-                    await TransformRequestBody(context, temporalContext);
-                }
-
-                if (!_temporalApi.MessageRequiresEncoding(temporalContext.ResponseMessageTypeName))
-                {
-                    // early return if no transformation is needed
-                    await _next(context);
                     _logger.LogDebug("Completed gRPC call {Path}", temporalContext.Path);
                     return;
                 }
-                // Store original response body stream
-                var originalResponseBodyStream = context.Response.Body;
-
-                using var responseBodyStream = new MemoryStream();
-                context.Response.Body = responseBodyStream;
-
-                // Continue to downstream server
-                await _next(context);
-
-                // Transform response body
-                await TransformResponseBody(context, temporalContext, originalResponseBodyStream, responseBodyStream);
-
                 _logger.LogDebug("Completed gRPC call {Path}", temporalContext.Path);
             }
             catch (Exception ex)
