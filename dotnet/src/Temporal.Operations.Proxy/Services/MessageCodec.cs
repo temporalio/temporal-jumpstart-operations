@@ -12,7 +12,7 @@ namespace Temporal.Operations.Proxy.Services;
 public class MessageCodec(
     IDescribeTemporalApi temporalApiDescriptor,
     ICodec<PayloadContext, byte[]> payloadCodec,
-    ILogger<MessageCodec> logger) : ICodec<MessageContext, byte[]>
+    ILogger<MessageCodec> logger) : IScopedCodec<MessageContext, byte[]>
 {
     private readonly IDescribeTemporalApi _temporalApiDescriptor = temporalApiDescriptor ?? throw new ArgumentNullException(nameof(temporalApiDescriptor));
     private readonly ICodec<PayloadContext, byte[]> _payloadCodec = payloadCodec ?? throw new ArgumentNullException(nameof(payloadCodec));
@@ -345,5 +345,21 @@ public class MessageCodec(
     public async Task<byte[]> DecodeAsync(MessageContext context, byte[] value)
     {
         return await EncodeDecodeMessageAsync(value, context.MessageTypeName, CodecDirection.Decode, context);
+    }
+
+    public async Task InitAsync(CodecDirection direction)
+    {
+        if (_payloadCodec is IScopedCodec<PayloadContext, byte[]> payloadCodec)
+        {
+            await payloadCodec.InitAsync(direction);
+        }
+    }
+
+    public async Task FinishAsync(CodecDirection direction)
+    {
+        if (_payloadCodec is IScopedCodec<PayloadContext, byte[]> payloadCodec)
+        {
+            await payloadCodec.FinishAsync(direction);
+        }
     }
 }
