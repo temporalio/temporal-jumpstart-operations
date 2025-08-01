@@ -7,4 +7,5 @@ public interface IDataService
     Task<T> UpdateItemAsync<T>(string id, T item, string partitionKey, string containerName);
     Task DeleteItemAsync(string id, string partitionKey, string containerName);
     Task<IEnumerable<T>> QueryItemsAsync<T>(string query, string containerName);
+    Task CreateBatchAsync<T>(IEnumerable<T> items, string partitionKey, string containerName);
 }

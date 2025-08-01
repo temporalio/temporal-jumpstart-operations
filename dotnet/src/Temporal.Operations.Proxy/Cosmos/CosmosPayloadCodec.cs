@@ -5,14 +5,16 @@ using Temporal.Operations.Proxy.Models;
 
 namespace Temporal.Operations.Proxy.Cosmos;
 
-public class CosmosPayloadCodec : ICodec<PayloadContext, byte[]>, 
+public class CosmosPayloadCodec : IScopedCodec<PayloadContext, byte[]>, 
     ICodec<PayloadContext, Temporalio.Api.Common.V1.Payload>
 {
-    private IDataService _dataService;
+    private readonly IDataService _dataService;
+    private readonly List<CosmosPayload> _encodingBuffer;
 
     public CosmosPayloadCodec(IDataService dataService)
     {
         _dataService = dataService;
+        _encodingBuffer = new List<CosmosPayload>();
     }
     public const string CosmosDatabaseName = "temporal";
     public const string CosmosContainerName = "payloads";
@@ -37,32 +39,33 @@ public class CosmosPayloadCodec : ICodec<PayloadContext, byte[]>,
             ttl = 60 * 60 * 24 * 180 // 180 days TTL
         };
 
-        await _dataService.CreateItemAsync(cp, cp.temporalNamespace, CosmosContainerName);
+        // Buffer the payload instead of immediately writing to Cosmos
+        _encodingBuffer.Add(cp);
 
-        var enc = new Temporalio.Api.Common.V1.Payload();
+        var replacementPayload = new Temporalio.Api.Common.V1.Payload();
         var encodingSwapped = false;
-        enc.Metadata.Add(CosmosIdMetadataKey, ByteString.CopyFromUtf8(id));
+        replacementPayload.Metadata.Add(CosmosIdMetadataKey, ByteString.CopyFromUtf8(id));
         foreach (var kvp in payload.Metadata)
         {
             if (kvp.Key == EncodingMetadataKey)
             {
-                enc.Metadata[EncodingMetadataOriginalKey] = kvp.Value;
-                enc.Metadata[EncodingMetadataKey] = EncodingMetadataValueByteString;
+                replacementPayload.Metadata[EncodingMetadataOriginalKey] = kvp.Value;
+                replacementPayload.Metadata[EncodingMetadataKey] = EncodingMetadataValueByteString;
                 encodingSwapped = true;
             }
             else
             {
-                enc.Metadata[kvp.Key] = kvp.Value;
+                replacementPayload.Metadata[kvp.Key] = kvp.Value;
             }
         }
 
         if (!encodingSwapped)
         {
-            enc.Metadata[EncodingMetadataKey] = EncodingMetadataValueByteString;
+            replacementPayload.Metadata[EncodingMetadataKey] = EncodingMetadataValueByteString;
         }
 
-        enc.Data = ByteString.CopyFromUtf8("who moved my cheese?");
-        return enc;
+        replacementPayload.Data = ByteString.CopyFromUtf8("who moved my cheese?");
+        return replacementPayload;
     }
 
     public async Task<Temporalio.Api.Common.V1.Payload> DecodeAsync(PayloadContext context, Temporalio.Api.Common.V1.Payload payload)
@@ -116,5 +119,31 @@ public class CosmosPayloadCodec : ICodec<PayloadContext, byte[]>,
         var payload = Temporalio.Api.Common.V1.Payload.Parser.ParseFrom(value);
         var decoded = await DecodeAsync(context, payload);
         return decoded.ToByteArray();
+    }
+
+    public Task InitAsync(CodecDirection direction)
+    {
+        // Clear the appropriate buffer
+        if (direction == CodecDirection.Encode)
+        {
+            _encodingBuffer.Clear();
+        }
+        // Decoding doesn't use buffering, so no action needed
+        return Task.CompletedTask;
+    }
+
+    public async Task FinishAsync(CodecDirection direction)
+    {
+        if (direction == CodecDirection.Encode && _encodingBuffer.Count > 0)
+        {
+            // Flush all buffered payloads to Cosmos in a batch
+            var grouped = _encodingBuffer.GroupBy(p => p.temporalNamespace);
+            foreach (var group in grouped)
+            {
+                await _dataService.CreateBatchAsync(group, group.Key, CosmosContainerName);
+            }
+            _encodingBuffer.Clear();
+        }
+        // Note: Decoding doesn't buffer writes, only reads individual items
     }
 }

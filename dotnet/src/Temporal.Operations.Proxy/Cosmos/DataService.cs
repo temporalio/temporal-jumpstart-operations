@@ -1,4 +1,5 @@
 using Microsoft.Azure.Cosmos;
+using Microsoft.Extensions.Configuration;
 
 namespace Temporal.Operations.Proxy.Cosmos;
 
@@ -65,5 +66,23 @@ public class DataService : IDataService
         }
 
         return results;
+    }
+
+    public async Task CreateBatchAsync<T>(IEnumerable<T> items, string partitionKey, string containerName)
+    {
+        var container = _cosmosClient.GetContainer(_databaseName, containerName);
+        var batch = container.CreateTransactionalBatch(new PartitionKey(partitionKey));
+        
+        foreach (var item in items)
+        {
+            batch.CreateItem(item);
+        }
+        
+        var response = await batch.ExecuteAsync();
+        
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new CosmosException($"Batch operation failed with status code: {response.StatusCode}", response.StatusCode, 0, response.ActivityId, response.RequestCharge);
+        }
     }
 }
