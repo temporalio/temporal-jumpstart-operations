@@ -133,7 +133,12 @@ builder.Services.AddSingleton<CosmosClient>(serviceProvider =>
 
 builder.Services.AddSingleton<IDataService, DataService>();
 
-// Payload codec registrations - keep as scoped for request-level state
+// Payload codec registrations
+// CosmosPayloadCodec needs to be scoped for request-level buffering state
+builder.Services.AddScoped<CosmosPayloadCodec>();
+// CryptPayloadCodec is stateless and can be singleton for better performance
+builder.Services.AddSingleton<CryptPayloadCodec>();
+
 // Conditional codec registration based on encoding strategy
 builder.Services.AddScoped<ICodec<PayloadContext, byte[]>>(serviceProvider =>
 {
@@ -145,9 +150,13 @@ builder.Services.AddScoped<ICodec<PayloadContext, byte[]>>(serviceProvider =>
     };
 });
 
-// Register both implementations as scoped
-builder.Services.AddScoped<CosmosPayloadCodec>();
-builder.Services.AddScoped<CryptPayloadCodec>();
+// Register IScopedCodec interface for lifecycle management
+builder.Services.AddScoped<IScopedCodec<PayloadContext, byte[]>>(serviceProvider =>
+{
+    var codec = serviceProvider.GetRequiredService<ICodec<PayloadContext, byte[]>>();
+    return codec as IScopedCodec<PayloadContext, byte[]> 
+           ?? throw new InvalidOperationException($"Codec {codec.GetType().Name} does not implement IScopedCodec");
+});
 
 var app = builder.Build();
 // Validate configuration on startup

@@ -55,15 +55,56 @@ while (pos < messageBytes.Length)
 }
 ```
 
-## Strategy Pattern for Payload Encoding
+## Codec Interface Architecture
 
-The proxy uses the `ICodec<TContext, T>` interface to support multiple payload transformation strategies:
+The proxy supports multiple payload transformation strategies through a layered codec interface design:
+
+### ICodec<TContext, T> - Base Transformation Interface
 
 ```csharp
 public interface ICodec<in TContext, T>
 {
-    T Encode(TContext context, T value);
-    T Decode(TContext context, T value);   
+    Task<T> EncodeAsync(TContext context, T value);
+    Task<T> DecodeAsync(TContext context, T value);
+}
+```
+
+This interface defines the core transformation contract for individual payload operations. Implementations receive contextual information and transform payload data synchronously.
+
+### IScopedCodec<TContext, T> - Lifecycle-Aware Interface  
+
+```csharp
+public interface IScopedCodec<in TContext, T> : ICodec<TContext, T>
+{
+    Task InitAsync(CodecDirection direction);
+    Task FinishAsync(CodecDirection direction);
+}
+```
+
+The `IScopedCodec` extends `ICodec` with lifecycle hooks that enable advanced patterns like buffering, batching, and deferred resolution. This interface supports:
+
+- **Request/Response Scoping**: Initialize state at the start of request/response processing
+- **Batch Operations**: Buffer multiple operations and execute them efficiently in batches
+- **Deferred Resolution**: Delay expensive operations until all data is collected
+- **Resource Management**: Clean up resources and connections after processing
+
+#### Lifecycle Flow
+
+```
+Request Processing:
+InitAsync(Encode) → Multiple EncodeAsync() calls → FinishAsync(Encode)
+
+Response Processing:  
+InitAsync(Decode) → Multiple DecodeAsync() calls → FinishAsync(Decode)
+```
+
+### Codec Direction
+
+```csharp
+public enum CodecDirection
+{
+    Encode,  // Request path: Client → Temporal Server
+    Decode   // Response path: Temporal Server → Client  
 }
 ```
 
@@ -81,17 +122,110 @@ public interface ICodec<in TContext, T>
 - Adds encryption metadata to payload headers
 - Supports key rotation by namespace
 
-#### 2. **CosmosDB** - Claim Check Pattern
+#### 2. **CosmosDB** - Claim Check Pattern with Batching
+
 ```json
 {
   "Encoding": {
     "Strategy": "CosmosDB"
+  },
+  "ConnectionStrings": {
+    "CosmosDB": "AccountEndpoint=https://your-account.documents.azure.com:443/;AccountKey=your-key;"
+  },
+  "CosmosDB": {
+    "DatabaseName": "temporal",
+    "ContainerName": "payloads"
   }
 }
 ```
-- Stores large payloads in Cosmos DB
-- Replaces payload data with reference ID
-- Implements claim check pattern for payload size optimization
+
+The Cosmos DB codec implements the **Claim Check Pattern** with advanced buffering and batching optimizations:
+
+##### Claim Check Pattern Overview
+
+Instead of storing large payload data directly in Temporal:
+
+```
+Traditional Flow:
+Client → [Large Payload Data] → Temporal Server → Storage
+
+Claim Check Flow:  
+Client → [Payload Reference ID] → Temporal Server → Storage
+          ↓
+    [Large Payload Data] → Cosmos DB
+```
+
+##### Advanced Buffering Implementation
+
+The `CosmosPayloadCodec` uses `IScopedCodec` to implement sophisticated batching:
+
+**Encoding (Request Path)**:
+1. `InitAsync(Encode)` - Clears the encoding buffer
+2. `EncodeAsync()` calls - Buffer payloads instead of immediate Cosmos writes
+3. `FinishAsync(Encode)` - Batch writes all buffered payloads to Cosmos
+
+**Decoding (Response Path)**:
+1. `InitAsync(Decode)` - Clears pending decode tasks
+2. `DecodeAsync()` calls - Return `TaskCompletionSource` promises instead of immediate data
+3. `FinishAsync(Decode)` - Batch reads all Cosmos IDs, resolves all promises
+
+##### Deferred Resolution Pattern
+
+The decoding process uses an innovative deferred resolution approach:
+
+```csharp
+public async Task<byte[]> DecodeAsync(PayloadContext context, byte[] value)
+{
+    var cosmosId = ExtractCosmosId(value);
+    var tcs = new TaskCompletionSource<byte[]>();
+    _pendingDecodes[cosmosId] = tcs;
+    
+    // Return pending task - blocks until FinishAsync resolves it
+    return await tcs.Task;
+}
+
+public async Task FinishAsync(CodecDirection direction)
+{
+    if (direction == CodecDirection.Decode)
+    {
+        // Batch fetch ALL pending Cosmos IDs in one operation
+        var cosmosData = await _dataService.GetBatchAsync(allPendingIds, ...);
+        
+        // Resolve ALL pending tasks simultaneously
+        foreach (var pendingTask in _pendingDecodes)
+        {
+            pendingTask.Value.SetResult(cosmosData[pendingTask.Key]);
+        }
+    }
+}
+```
+
+##### Performance Benefits
+
+- **Write Batching**: N individual payload writes → 1 transactional batch write
+- **Read Batching**: N individual payload reads → 1 batch read operation  
+- **Transactional Consistency**: All payloads in a request succeed or fail together
+- **Reduced Latency**: Parallel processing of multiple payloads
+- **Cosmos Efficiency**: Minimizes RU consumption through batch operations
+
+##### Partition Strategy
+
+Payloads are partitioned by Temporal namespace for optimal Cosmos performance:
+
+```csharp
+var cosmosPayload = new CosmosPayload
+{
+    id = Guid.NewGuid().ToString(),
+    value = payloadData,
+    temporalNamespace = context.Namespace,  // Partition key
+    ttl = 60 * 60 * 24 * 180  // 180 days TTL
+};
+```
+
+This ensures:
+- Batch operations stay within single partitions
+- Automatic payload cleanup via TTL
+- Namespace-based data isolation
 
 ### Custom Codec Implementation
 
@@ -193,12 +327,130 @@ Configure the proxy in `appsettings.json`:
 
 ### Running the Proxy
 
+#### Default Configuration (AES Encryption)
+
 ```bash
 # Build and run the proxy
 dotnet run --project src/Temporal.Operations.Proxy
 
 # The proxy will listen on:
 # - HTTP/2: http://localhost:5000
+```
+
+#### Running with Cosmos DB Claim Check Pattern
+
+**1. Prerequisites**
+- Azure Cosmos DB account with SQL API
+- Create database named `temporal` (or configure custom name)
+- Create container named `payloads` with partition key `/temporalNamespace`
+
+**2. Configure Cosmos Connection**
+
+Update your `appsettings.json`:
+
+```json
+{
+  "Encoding": {
+    "Strategy": "CosmosDB"
+  },
+  "ConnectionStrings": {
+    "CosmosDB": "AccountEndpoint=https://your-account.documents.azure.com:443/;AccountKey=your-primary-key;"
+  },
+  "CosmosDB": {
+    "DatabaseName": "temporal",
+    "ContainerName": "payloads"
+  }
+}
+```
+
+**3. Create Cosmos Resources**
+
+```bash
+# Using Azure CLI
+az cosmosdb sql database create \
+  --account-name your-cosmos-account \
+  --resource-group your-resource-group \
+  --name temporal
+
+az cosmosdb sql container create \
+  --account-name your-cosmos-account \
+  --resource-group your-resource-group \
+  --database-name temporal \
+  --name payloads \
+  --partition-key-path "/temporalNamespace" \
+  --throughput 400
+```
+
+**4. Run with Cosmos Strategy**
+
+```bash
+# Set environment variable (optional)
+export ConnectionStrings__CosmosDB="AccountEndpoint=https://your-account.documents.azure.com:443/;AccountKey=your-key;"
+
+# Run the proxy
+dotnet run --project src/Temporal.Operations.Proxy
+```
+
+**5. Verify Cosmos Integration**
+
+Monitor your Cosmos DB container to see payload data being stored:
+
+```bash
+# Test with a workflow that has payloads
+# Check Azure Portal → Cosmos DB → Data Explorer → temporal/payloads
+# You should see documents with structure:
+{
+  "id": "guid-value",
+  "value": [base64-encoded-payload-data],
+  "temporalNamespace": "default",
+  "ttl": 15552000
+}
+```
+
+#### Environment Variables
+
+You can override configuration using environment variables:
+
+```bash
+# Cosmos connection string
+export ConnectionStrings__CosmosDB="your-connection-string"
+
+# Encoding strategy
+export Encoding__Strategy="CosmosDB"
+
+# Cosmos database name
+export CosmosDB__DatabaseName="temporal"
+
+# Cosmos container name  
+export CosmosDB__ContainerName="payloads"
+
+# Run proxy
+dotnet run --project src/Temporal.Operations.Proxy
+```
+
+#### Docker Deployment with Cosmos
+
+```dockerfile
+FROM mcr.microsoft.com/dotnet/aspnet:8.0
+COPY . /app
+WORKDIR /app
+
+# Set Cosmos configuration via environment
+ENV Encoding__Strategy=CosmosDB
+ENV ConnectionStrings__CosmosDB=""
+ENV CosmosDB__DatabaseName=temporal
+ENV CosmosDB__ContainerName=payloads
+
+EXPOSE 5000
+ENTRYPOINT ["dotnet", "Temporal.Operations.Proxy.dll"]
+```
+
+```bash
+# Run with Docker
+docker run -d \
+  -p 5000:5000 \
+  -e ConnectionStrings__CosmosDB="your-connection-string" \
+  your-proxy-image
 ```
 
 ### Using the Proxy
@@ -245,15 +497,14 @@ dotnet test tests/Temporal.Operations.Proxy.Tests
 - `src/Temporal.Operations.Proxy/Services/CryptPayloadCodec.cs` - Default encryption codec
 - `src/Temporal.Operations.Proxy/Cosmos/CosmosPayloadCodec.cs` - CosmosDB claim check codec
 
-## Future Improvements Needed
+## Architecture Accomplishments
 
-The proxy is a work in progress with several important enhancements planned:
+The proxy has successfully implemented several advanced patterns:
 
-### 1. Async Codec Interface
+### ✅ Async Codec Interface
 
-**Current Limitation**: The `ICodec` interface is synchronous, which forces CosmosDB operations to use `.Wait()` causing thread blocking.
+**Implemented**: The `ICodec` interface is fully async, enabling proper async/await patterns:
 
-**Needed Change**:
 ```csharp
 public interface ICodec<in TContext, T>
 {
@@ -262,36 +513,43 @@ public interface ICodec<in TContext, T>
 }
 ```
 
-This would allow proper async/await patterns for storage operations and better performance.
+This allows efficient storage operations without thread blocking.
 
-### 2. Payload Buffering and Batching
+### ✅ Advanced Payload Buffering and Batching
 
-**Current Limitation**: Each payload transformation results in individual storage roundtrips.
+**Implemented**: The `IScopedCodec` interface enables sophisticated batching patterns:
 
-**Needed Enhancement**: 
-- Buffer transformed payloads during request processing
-- Batch storage operations (writes during encode, reads during decode)  
-- Flush buffered operations after request/response completion
-- Implement transactional consistency for payload operations
+- ✅ **Request-Scoped Buffering**: `InitAsync()/FinishAsync()` lifecycle management
+- ✅ **Batch Storage Operations**: N individual operations → 1 batch operation  
+- ✅ **Deferred Resolution**: TaskCompletionSource pattern for delayed data resolution
+- ✅ **Transactional Consistency**: All payloads in a request succeed or fail together
 
-**Benefits**:
+**Performance Benefits Achieved**:
 - Reduced storage roundtrips (N payloads → 1 batch operation)
 - Better performance for workflows with many payloads
 - Transactional consistency across payload operations
+- Minimized latency through parallel processing
 
-### 3. Per-Namespace Codec Registration
+### ✅ Claim Check Pattern Implementation
+
+**Implemented**: Full claim check pattern with Cosmos DB:
+
+- ✅ **Large Payload Optimization**: Store payload data separately from Temporal workflow state
+- ✅ **Reference-Based Storage**: Replace payload data with lightweight references
+- ✅ **Automatic TTL**: Configurable payload cleanup (default: 180 days)
+- ✅ **Partition Strategy**: Namespace-based partitioning for optimal performance
+
+## Future Enhancements Planned
+
+### Per-Namespace Codec Registration
 
 **Planned**: Support different codec strategies per Temporal namespace for multi-tenant scenarios.
-
-### 4. Advanced Payload Filtering
-
-**Planned**: Configurable payload transformation rules based on workflow type, activity type, or payload content patterns.
 
 ## Frequently Asked Questions
 
 ### Q: How does this approach handle protobuf `Any` types?
 
-**A: The wire-format approach completely sidesteps `Any` complications.**
+**A: The wire-format approach should completely sidestep `Any` complications.**
 
 The proxy operates at the protobuf wire format level, which is more fundamental than the type system. Here's why `Any` doesn't matter:
 
@@ -354,7 +612,7 @@ Wire format approach:
 // Copy unchanged fields as-is (cheap)
 ```
 
-**Benchmarks**: For a 10KB message with 100 bytes of payload data, the wire format approach is ~5-10x faster and uses ~50% less memory.
+**Benchmarks**: Coming soon...presumably, for a 10KB message with 100 bytes of payload data, the wire format approach is ~5-10x faster and uses ~50% less memory.
 
 ### Q: Can this approach handle deeply nested Payload fields?
 
