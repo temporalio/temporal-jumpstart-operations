@@ -2,19 +2,27 @@ using Google.Protobuf;
 using Microsoft.Azure.Cosmos;
 using Temporal.Operations.Proxy.Interfaces;
 using Temporal.Operations.Proxy.Models;
+using Temporalio.Api.Common.V1;
 
 namespace Temporal.Operations.Proxy.Cosmos;
 
+struct PayloadProxy
+{
+    public PayloadContext Context;
+    public Payload Payload;
+    public TaskCompletionSource<byte[]> Completion;
+}
 public class CosmosPayloadCodec : IScopedCodec<PayloadContext, byte[]>, 
     ICodec<PayloadContext, Temporalio.Api.Common.V1.Payload>
 {
     private readonly IDataService _dataService;
     private readonly List<CosmosPayload> _encodingBuffer;
-
+    private readonly IDictionary<string, PayloadProxy> _pendingDecodes;
     public CosmosPayloadCodec(IDataService dataService)
     {
         _dataService = dataService;
         _encodingBuffer = new List<CosmosPayload>();
+        _pendingDecodes = new Dictionary<string, PayloadProxy>();
     }
     public const string CosmosDatabaseName = "temporal";
     public const string CosmosContainerName = "payloads";
@@ -68,7 +76,7 @@ public class CosmosPayloadCodec : IScopedCodec<PayloadContext, byte[]>,
         return replacementPayload;
     }
 
-    public async Task<Temporalio.Api.Common.V1.Payload> DecodeAsync(PayloadContext context, Temporalio.Api.Common.V1.Payload payload)
+    public async Task<Payload> DecodeAsync(PayloadContext context, Payload payload)
     {
         // Remove encryption metadata and restore original encoding
         if (!payload.Metadata[EncodingMetadataKey].Equals(EncodingMetadataValueByteString))
@@ -101,11 +109,16 @@ public class CosmosPayloadCodec : IScopedCodec<PayloadContext, byte[]>,
         }
 
         var id = idBytes.ToStringUtf8();
+       
         var cosmosPayload = await _dataService.GetItemAsync<CosmosPayload>(id, context.Namespace, CosmosContainerName);
         dec.Data = ByteString.CopyFrom(cosmosPayload.value);
-
-        return dec;
+        return payload;
     }
+
+    private async Task<(bool Exists, string? Result)> TryPeekCosmosId(PayloadContext context, Temporalio.Api.Common.V1.Payload payload)
+    {
+        return payload.Metadata.TryGetValue(CosmosIdMetadataKey, out var idBytes) ? (true, idBytes.ToStringUtf8()) : (false, null);
+    } 
 
     public async Task<byte[]> EncodeAsync(PayloadContext context, byte[] value)
     {
@@ -116,9 +129,23 @@ public class CosmosPayloadCodec : IScopedCodec<PayloadContext, byte[]>,
 
     public async Task<byte[]> DecodeAsync(PayloadContext context, byte[] value)
     {
-        var payload = Temporalio.Api.Common.V1.Payload.Parser.ParseFrom(value);
+        var payload = Payload.Parser.ParseFrom(value);
+        var (exists, id) = await TryPeekCosmosId(context, payload);
+        if (!exists || id==null)
+        {
+            throw new InvalidOperationException("Missing id from payload");
+        }
+
+        var proxy = new PayloadProxy
+        {
+            Payload = payload,
+            Completion = new TaskCompletionSource<byte[]>(),
+            Context = context,
+        };
+
+        _pendingDecodes.Add(id, proxy);
         var decoded = await DecodeAsync(context, payload);
-        return decoded.ToByteArray();
+        return await proxy.Completion.Task;
     }
 
     public Task InitAsync(CodecDirection direction)
@@ -128,22 +155,34 @@ public class CosmosPayloadCodec : IScopedCodec<PayloadContext, byte[]>,
         {
             _encodingBuffer.Clear();
         }
-        // Decoding doesn't use buffering, so no action needed
+        else if(direction == CodecDirection.Decode)
+        {
+            _pendingDecodes.Clear();
+        }
         return Task.CompletedTask;
     }
+    
 
     public async Task FinishAsync(CodecDirection direction)
     {
         if (direction == CodecDirection.Encode && _encodingBuffer.Count > 0)
         {
-            // Flush all buffered payloads to Cosmos in a batch
-            var grouped = _encodingBuffer.GroupBy(p => p.temporalNamespace);
-            foreach (var group in grouped)
-            {
-                await _dataService.CreateBatchAsync(group, group.Key, CosmosContainerName);
-            }
-            _encodingBuffer.Clear();
+            await FlushEncodeBuffer();
+        } else if (direction == CodecDirection.Decode && _pendingDecodes.Count > 0)
+        {
+            await ResolvePendingDecodeBuffer();
         }
-        // Note: Decoding doesn't buffer writes, only reads individual items
+        
+    }
+
+    private async Task FlushEncodeBuffer()
+    {
+        // Flush all buffered payloads to Cosmos in a batch
+        var grouped = _encodingBuffer.GroupBy(p => p.temporalNamespace);
+        foreach (var group in grouped)
+        {
+            await _dataService.CreateBatchAsync(group, group.Key, CosmosContainerName);
+        }
+        _encodingBuffer.Clear();
     }
 }
