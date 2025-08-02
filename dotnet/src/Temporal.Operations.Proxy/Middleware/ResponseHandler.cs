@@ -35,11 +35,13 @@ public class ResponseHandler(
             }
         }
 
+        byte[]? transformedBytes = null;
+        
         if (initException == null)
         {
             try
             {
-                await TransformResponseBody(context, temporalContext);
+                transformedBytes = await TransformResponseBody(context, temporalContext);
             }
             catch (Exception ex)
             {
@@ -52,6 +54,24 @@ public class ResponseHandler(
             try
             {
                 await scoped.FinishAsync(direction);
+            }
+            catch (Exception ex)
+            {
+                finishException = ExceptionDispatchInfo.Capture(ex);
+            }
+        }
+        
+        // After FinishAsync, create the final gRPC frame with resolved data
+        if (transformedBytes != null && mainException == null && finishException == null)
+        {
+            try
+            {
+                var grpcResponseBytes = GrpcUtils.CreateGrpcFrame(transformedBytes);
+                context.Response.ContentLength = grpcResponseBytes.Length;
+                var oldStream = context.Response.Body;
+                context.Response.Body = new MemoryStream(grpcResponseBytes);
+                context.Response.Body.Position = 0;
+                await oldStream.DisposeAsync();
             }
             catch (Exception ex)
             {
@@ -77,7 +97,7 @@ public class ResponseHandler(
 
         return true;
     }
-    private async Task TransformResponseBody(
+    private async Task<byte[]?> TransformResponseBody(
         HttpContext context,
         TemporalContext temporalContext)
     {
@@ -102,10 +122,10 @@ public class ResponseHandler(
             if (responseBodyBytes.Length == 0)
             {
                 logger.LogDebug("Empty response body, skipping transformation");
-                return;
+                return null;
             }
 
-            // Decode the response (sans grpc prefix)
+            // Decode the response (sans grpc prefix) - this may return deferred tasks
             var transformedBytes = await messageCodec.DecodeAsync(
                 new MessageContext
                 {
@@ -113,18 +133,11 @@ public class ResponseHandler(
                     TemporalContext = temporalContext,
                 },
                 responseBodyBytes[5..]);
-            // Write transformed response to the original stream
-            var grpcResponseBytes = GrpcUtils.CreateGrpcFrame(transformedBytes);
-            context.Response.ContentLength = grpcResponseBytes.Length;
-            var oldStream = context.Response.Body;
-            // replace the stream with the transformed one
-            // however this could be a performance opportunity...by resetting the previous stream
-            context.Response.Body = new MemoryStream(grpcResponseBytes);
-            context.Response.Body.Position = 0;
-            await oldStream.DisposeAsync();
 
             logger.LogDebug("Response body transformed: {OriginalSize} -> {TransformedSize} bytes",
                 responseBodyBytes.Length, transformedBytes.Length);
+                
+            return transformedBytes;
         }
         catch (Exception ex)
         {

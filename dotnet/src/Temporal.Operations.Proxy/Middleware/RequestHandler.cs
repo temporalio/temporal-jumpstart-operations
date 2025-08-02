@@ -6,14 +6,15 @@ using Temporal.Operations.Proxy.Services;
 
 namespace Temporal.Operations.Proxy.Middleware;
 
-public class RequestHandler : IHandleRequest
+public class RequestHandler(
+    ILogger<RequestHandler> logger,
+    ICodec<MessageContext, byte[]> messageCodec,
+    IDescribeTemporalApi temporalApi)
+    : IHandleRequest
 {
-    ILogger<RequestHandler> _logger;
-    ICodec<MessageContext, byte[]> _messageCodec;
-    IDescribeTemporalApi _temporalApi;
     public async Task<bool> TryHandleAsync(HttpContext context, TemporalContext temporalContext)
     {
-        if (!_temporalApi.MessageRequiresEncoding(temporalContext.RequestMessageTypeName))
+        if (!temporalApi.MessageRequiresEncoding(temporalContext.RequestMessageTypeName))
         {
             // No need to transform the request body
             // Don't call lifecycle hooks, either
@@ -21,7 +22,7 @@ public class RequestHandler : IHandleRequest
         }
         var direction = CodecDirection.Encode;
         
-        var scoped = _messageCodec as IScopedCodec<MessageContext, byte[]>; 
+        var scoped = messageCodec as IScopedCodec<MessageContext, byte[]>; 
         ExceptionDispatchInfo? initException = null;
         ExceptionDispatchInfo? mainException = null;
         ExceptionDispatchInfo? finishException = null;
@@ -90,15 +91,15 @@ public class RequestHandler : IHandleRequest
             var requestBodyBytes = memoryStream.ToArray();
             if (requestBodyBytes.Length == 0)
             {
-                _logger.LogDebug("Empty request body, skipping transformation");
+                logger.LogDebug("Empty request body, skipping transformation");
                 return;
             }
 
-            _logger.LogDebug("TransformRequestBody for path: {Path} with {Length} bytes", temporalContext.Path,
+            logger.LogDebug("TransformRequestBody for path: {Path} with {Length} bytes", temporalContext.Path,
                 requestBodyBytes.Length);
 
             // Encode the request (your field-specific logic)
-            var transformedBytes = await _messageCodec.EncodeAsync(
+            var transformedBytes = await messageCodec.EncodeAsync(
                 new MessageContext
                 {
                     MessageTypeName = temporalContext.RequestMessageTypeName,
@@ -113,12 +114,12 @@ public class RequestHandler : IHandleRequest
             context.Request.Body = transformedStream;
             context.Request.ContentLength = transformedStream.Length;
 
-            _logger.LogDebug("Request body transformed: {OriginalSize} -> {TransformedSize} bytes",
+            logger.LogDebug("Request body transformed: {OriginalSize} -> {TransformedSize} bytes",
                 requestBodyBytes.Length, transformedBytes.Length);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to transform request body");
+            logger.LogError(ex, "Failed to transform request body");
             throw;
         }
 

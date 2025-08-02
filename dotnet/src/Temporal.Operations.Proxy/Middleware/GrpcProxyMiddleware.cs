@@ -9,19 +9,18 @@ using Temporal.Operations.Proxy.Models;
 namespace Temporal.Operations.Proxy.Middleware
 {
     public class GrpcProxyMiddleware(
-        RequestDelegate next,
         ILogger<GrpcProxyMiddleware> logger,
         IDescribeTemporalApi temporalApi,
         IHandleRequest requestHandler,
-        IHandleResponse responseHandler)
+        IHandleResponse responseHandler) : IMiddleware
     {
         private const string TemporalNamespaceHeaderKey = "temporal-namespace";
 
-        public async Task InvokeAsync(HttpContext context)
+        public async Task InvokeAsync(HttpContext context, RequestDelegate next)
         {
             if (IsGrpcUnaryCall(context.Request))
             {
-                await HandleGrpcCall(context);
+                await HandleGrpcCall(context, next);
             }
             else
             {
@@ -70,7 +69,7 @@ namespace Temporal.Operations.Proxy.Middleware
             };
         }
 
-        private async Task HandleGrpcCall(HttpContext context)
+        private async Task HandleGrpcCall(HttpContext context, RequestDelegate next)
         {
             try
             {

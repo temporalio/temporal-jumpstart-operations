@@ -53,6 +53,7 @@ builder.Services.ConfigureHttpClientDefaults(http =>
 
 // Add unified configuration
 builder.Services.Configure<AppConfiguration>(builder.Configuration);
+builder.Services.Configure<TemporalApiConfiguration>(builder.Configuration.GetSection("TemporalApi"));
 builder.Services.AddSingleton<IValidateOptions<TemporalApiConfiguration>, TemporalApiConfigurationValidator>();
 
 // Enable configuration monitoring (reloads when appsettings.json changes)
@@ -86,6 +87,9 @@ builder.Services.AddScoped<IScopedCodec<MessageContext, byte[]>>(serviceProvider
 // Register request/response handlers for the middleware
 builder.Services.AddScoped<IHandleRequest, RequestHandler>();
 builder.Services.AddScoped<IHandleResponse, ResponseHandler>();
+
+// Register the middleware as scoped so it can inject scoped services
+builder.Services.AddScoped<GrpcProxyMiddleware>();
 
 // Register Temporal API descriptor services
 builder.Services.AddSingleton<IDescribeTemporalApi, TemporalApiDescriptor>();
