@@ -12,6 +12,7 @@ using Temporal.Operations.Proxy.Interfaces;
 using Temporal.Operations.Proxy.Middleware;
 using Temporal.Operations.Proxy.Models;
 using Temporal.Operations.Proxy.Services;
+using RequestHandler = Temporal.Operations.Proxy.Middleware.RequestHandler;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -74,28 +75,17 @@ builder.Services.AddSingleton<AesByteEncryptor>(_ => new AesByteEncryptor());
 builder.Services.AddSingleton<IEncrypt>(p => p.GetRequiredService<AesByteEncryptor>());
 builder.Services.AddSingleton<IAddEncryptionKey>(p => p.GetRequiredService<AesByteEncryptor>());
 
-// Request-scoped codec registrations (for lifecycle hooks)
-// Register the base MessageCodec as scoped so each request gets its own instance
+// Request-scoped codec registrations 
+// Register MessageCodec as scoped so each request gets its own instance with lifecycle management
 builder.Services.AddScoped<MessageCodec>();
+builder.Services.AddScoped<ICodec<MessageContext, byte[]>>(serviceProvider => 
+    serviceProvider.GetRequiredService<MessageCodec>());
+builder.Services.AddScoped<IScopedCodec<MessageContext, byte[]>>(serviceProvider => 
+    serviceProvider.GetRequiredService<MessageCodec>());
 
-// Register the request-scoped wrapper that provides lifecycle hooks
-builder.Services.AddScoped<ICodec<MessageContext, byte[]>>(serviceProvider =>
-{
-    var messageCodec = serviceProvider.GetRequiredService<MessageCodec>();
-    var requestHandlers = serviceProvider.GetServices<IHandleRequest>();
-    var responseHandlers = serviceProvider.GetServices<IHandleResponse>();
-    return new RequestScopedMessageCodec(messageCodec, requestHandlers, responseHandlers);
-});
-
-// Register example lifecycle handlers (these can be replaced with custom implementations)
-builder.Services.AddScoped<IHandleRequest, BufferingRequestHandler>();
-builder.Services.AddScoped<IHandleResponse, BufferingResponseHandler>();
-
-// Also register the main codec as lifecycle interfaces for dependency injection
-builder.Services.AddScoped<IHandleRequest>(serviceProvider => 
-    (RequestScopedMessageCodec)serviceProvider.GetRequiredService<ICodec<MessageContext, byte[]>>());
-builder.Services.AddScoped<IHandleResponse>(serviceProvider => 
-    (RequestScopedMessageCodec)serviceProvider.GetRequiredService<ICodec<MessageContext, byte[]>>());
+// Register request/response handlers for the middleware
+builder.Services.AddScoped<IHandleRequest, RequestHandler>();
+builder.Services.AddScoped<IHandleResponse, ResponseHandler>();
 
 // Register Temporal API descriptor services
 builder.Services.AddSingleton<IDescribeTemporalApi, TemporalApiDescriptor>();

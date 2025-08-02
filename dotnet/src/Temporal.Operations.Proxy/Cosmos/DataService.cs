@@ -111,8 +111,8 @@ public class DataService : IDataService
             var batchResponse = response[i];
             if (batchResponse.IsSuccessStatusCode)
             {
-                var item = batchResponse.Resource<T>();
-                result[idList[i]] = item;
+                var typedResponse = (TransactionalBatchOperationResult<T>)batchResponse;
+                result[idList[i]] = typedResponse.Resource;
             }
             // Note: Missing items are not included in the result dictionary
         }
