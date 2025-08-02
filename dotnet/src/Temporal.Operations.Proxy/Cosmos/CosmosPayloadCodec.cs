@@ -12,21 +12,21 @@ struct PayloadProxy
     public Payload Payload;
     public TaskCompletionSource<byte[]> Completion;
 }
-public class CosmosPayloadCodec : IScopedCodec<PayloadContext, byte[]>, 
-    ICodec<PayloadContext, Temporalio.Api.Common.V1.Payload>
+// CosmosPayloadCodec
+// Expects to interact with partition keys by namespace
+// (do not provide path for value, eg '/myNamespace', just 'myNamespace').
+// This claim check pattern buffers writes, flushing in a batch in a transaction.
+// For reads, it will delay resolution of Task until all payloads have been enqueued
+// so that one call can fetch all the payloads.
+public class CosmosPayloadCodec(IDataService dataService) : 
+    IScopedCodec<PayloadContext, byte[]>,
+    ICodec<PayloadContext, Payload>
 {
-    private readonly IDataService _dataService;
-    private readonly List<CosmosPayload> _encodingBuffer;
-    private readonly IDictionary<string, PayloadProxy> _pendingDecodes;
-    public CosmosPayloadCodec(IDataService dataService)
-    {
-        _dataService = dataService;
-        _encodingBuffer = new List<CosmosPayload>();
-        _pendingDecodes = new Dictionary<string, PayloadProxy>();
-    }
-    public const string CosmosDatabaseName = "temporal";
+    private readonly List<CosmosPayload> _encodingBuffer = new();
+    private readonly IDictionary<string, PayloadProxy> _pendingDecodes = new Dictionary<string, PayloadProxy>();
+
+    // TODO inject this value from config
     public const string CosmosContainerName = "payloads";
-    public const string CosmosPartitionKey = "/temporalNamespace";
     public const string CosmosIdMetadataKey = "cosmos-id";
     public const string EncodingMetadataOriginalKey = "encoding-original";
     public const string EncodingMetadataKey = "encoding";
@@ -34,7 +34,7 @@ public class CosmosPayloadCodec : IScopedCodec<PayloadContext, byte[]>,
     private static readonly ByteString EncodingMetadataValueByteString = ByteString.CopyFromUtf8(EncodingMetadataValue);
 
 
-    public async Task<Temporalio.Api.Common.V1.Payload> EncodeAsync(PayloadContext context, Temporalio.Api.Common.V1.Payload payload)
+    public async Task<Payload> EncodeAsync(PayloadContext context, Payload payload)
     {
         // Cosmos requires a unique id for each item
         var id = Guid.NewGuid().ToString();
@@ -50,7 +50,7 @@ public class CosmosPayloadCodec : IScopedCodec<PayloadContext, byte[]>,
         // Buffer the payload instead of immediately writing to Cosmos
         _encodingBuffer.Add(cp);
 
-        var replacementPayload = new Temporalio.Api.Common.V1.Payload();
+        var replacementPayload = new Payload();
         var encodingSwapped = false;
         replacementPayload.Metadata.Add(CosmosIdMetadataKey, ByteString.CopyFromUtf8(id));
         foreach (var kvp in payload.Metadata)
@@ -88,31 +88,11 @@ public class CosmosPayloadCodec : IScopedCodec<PayloadContext, byte[]>,
         {
             throw new InvalidOperationException($"Missing {CosmosIdMetadataKey} metadata");
         }
-
-        var dec = new Temporalio.Api.Common.V1.Payload();
-        foreach (var kvp in payload.Metadata)
-        {
-            switch (kvp.Key)
-            {
-                case EncodingMetadataKey:
-                case CosmosIdMetadataKey:
-                    // do not include these metadata keys
-                    continue;
-                case EncodingMetadataOriginalKey:
-                    dec.Metadata[EncodingMetadataKey] = payload.Metadata[EncodingMetadataOriginalKey];
-                    break;
-                default:
-                    // preserve custom metadata
-                    dec.Metadata[kvp.Key] = kvp.Value;
-                    break;
-            }
-        }
-
         var id = idBytes.ToStringUtf8();
-       
-        var cosmosPayload = await _dataService.GetItemAsync<CosmosPayload>(id, context.Namespace, CosmosContainerName);
-        dec.Data = ByteString.CopyFrom(cosmosPayload.value);
-        return payload;
+        var cosmosPayload = await dataService.GetItemAsync<CosmosPayload>(id, context.Namespace, CosmosContainerName);
+
+        var restoredPayload = BuildDecodedPayload(payload, cosmosPayload);
+        return restoredPayload;
     }
 
     private async Task<(bool Exists, string? Result)> TryPeekCosmosId(PayloadContext context, Temporalio.Api.Common.V1.Payload payload)
@@ -122,7 +102,7 @@ public class CosmosPayloadCodec : IScopedCodec<PayloadContext, byte[]>,
 
     public async Task<byte[]> EncodeAsync(PayloadContext context, byte[] value)
     {
-        var payload = Temporalio.Api.Common.V1.Payload.Parser.ParseFrom(value);
+        var payload = Payload.Parser.ParseFrom(value);
         var encoded = await EncodeAsync(context, payload);
         return encoded.ToByteArray();
     }
@@ -181,8 +161,74 @@ public class CosmosPayloadCodec : IScopedCodec<PayloadContext, byte[]>,
         var grouped = _encodingBuffer.GroupBy(p => p.temporalNamespace);
         foreach (var group in grouped)
         {
-            await _dataService.CreateBatchAsync(group, group.Key, CosmosContainerName);
+            await dataService.CreateBatchAsync(group, group.Key, CosmosContainerName);
         }
         _encodingBuffer.Clear();
+    }
+
+    private async Task ResolvePendingDecodeBuffer()
+    {
+        // Group by namespace since Cosmos batch operations require same partition key
+        var groupedByNamespace = _pendingDecodes
+            .GroupBy(kvp => kvp.Value.Context.Namespace)
+            .ToList();
+
+        foreach (var namespaceGroup in groupedByNamespace)
+        {
+            var ids = namespaceGroup.Select(kvp => kvp.Key).ToList();
+            var cosmosPayloads = await dataService.GetBatchAsync<CosmosPayload>(ids, namespaceGroup.Key, CosmosContainerName);
+
+            // Resolve each pending decode task
+            foreach (var kvp in namespaceGroup)
+            {
+                var cosmosId = kvp.Key;
+                var proxy = kvp.Value;
+
+                if (cosmosPayloads.TryGetValue(cosmosId, out var cosmosPayload))
+                {
+                    // Build the decoded payload using the original payload structure
+                    var decodedPayload = BuildDecodedPayload(proxy.Payload, cosmosPayload);
+                    var decodedBytes = decodedPayload.ToByteArray();
+                    proxy.Completion.SetResult(decodedBytes);
+                }
+                else
+                {
+                    // Cosmos item not found - set exception
+                    proxy.Completion.SetException(new InvalidOperationException($"Cosmos payload with ID {cosmosId} not found"));
+                }
+            }
+        }
+
+        _pendingDecodes.Clear();
+    }
+
+    private Payload BuildDecodedPayload(Payload originalPayload, CosmosPayload cosmosPayload)
+    {
+        var decodedPayload = new Payload();
+        
+        // Copy all metadata except Cosmos-specific keys, restore original encoding
+        foreach (var kvp in originalPayload.Metadata)
+        {
+            switch (kvp.Key)
+            {
+                case EncodingMetadataKey:
+                case CosmosIdMetadataKey:
+                    // Skip these metadata keys
+                    continue;
+                case EncodingMetadataOriginalKey:
+                    // Restore original encoding
+                    decodedPayload.Metadata[EncodingMetadataKey] = originalPayload.Metadata[EncodingMetadataOriginalKey];
+                    break;
+                default:
+                    // Preserve other metadata
+                    decodedPayload.Metadata[kvp.Key] = kvp.Value;
+                    break;
+            }
+        }
+
+        // Set the real payload data from Cosmos
+        decodedPayload.Data = ByteString.CopyFrom(cosmosPayload.value);
+        
+        return decodedPayload;
     }
 }

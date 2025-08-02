@@ -85,4 +85,38 @@ public class DataService : IDataService
             throw new CosmosException($"Batch operation failed with status code: {response.StatusCode}", response.StatusCode, 0, response.ActivityId, response.RequestCharge);
         }
     }
+
+    public async Task<Dictionary<string, T>> GetBatchAsync<T>(IEnumerable<string> ids, string partitionKey, string containerName)
+    {
+        var container = _cosmosClient.GetContainer(_databaseName, containerName);
+        var batch = container.CreateTransactionalBatch(new PartitionKey(partitionKey));
+        
+        foreach (var id in ids)
+        {
+            batch.ReadItem(id);
+        }
+        
+        var response = await batch.ExecuteAsync();
+        
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new CosmosException($"Batch read operation failed with status code: {response.StatusCode}", response.StatusCode, 0, response.ActivityId, response.RequestCharge);
+        }
+
+        var result = new Dictionary<string, T>();
+        var idList = ids.ToList();
+        
+        for (int i = 0; i < response.Count; i++)
+        {
+            var batchResponse = response[i];
+            if (batchResponse.IsSuccessStatusCode)
+            {
+                var item = batchResponse.Resource<T>();
+                result[idList[i]] = item;
+            }
+            // Note: Missing items are not included in the result dictionary
+        }
+        
+        return result;
+    }
 }
